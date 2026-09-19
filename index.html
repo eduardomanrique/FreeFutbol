@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <meta name="theme-color" content="#111b19" />
+    <title>CAMPO — O jogo começa aqui</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="world"></div>
+      <div class="vignette"></div>
+      <header>
+        <a class="brand" href="./" aria-label="Campo início"
+          ><span class="brand-icon">◈</span> CAMPO<span class="edition"
+            >26</span
+          ></a
+        >
+        <nav>
+          <button class="nav active" id="nav-play">Jogar</button
+          ><button class="nav" id="nav-controls">Controles</button
+          ><button class="nav" id="nav-settings">Configurações</button>
+        </nav>
+        <div class="header-right">
+          <span class="status-dot"></span> LOCAL <span class="divider"></span
+          ><button
+            id="sound"
+            class="icon-button"
+            aria-label="Ativar som"
+            title="Ativar som"
+          >
+            ♫</button
+          ><button
+            id="fullscreen"
+            class="icon-button"
+            aria-label="Tela cheia"
+            title="Tela cheia (F)"
+          >
+            ⛶
+          </button>
+        </div>
+      </header>
+      <main id="home">
+        <div class="scene-caption">
+          <span class="live-dot"></span> ARENA CAMPO
+          <span>38°43′ N &nbsp; 9°08′ W</span>
+        </div>
+        <section class="hero">
+          <div class="eyebrow"><span></span> FUTEBOL, NA SUA ESSÊNCIA</div>
+          <h1>O jogo<br />começa <em>aqui.</em></h1>
+          <p>
+            O campo é seu. Encontre o passe.<br />Sinta o jogo. Faça a
+            diferença.
+          </p>
+          <div class="hero-bottom">
+            <span class="small-icon">↗</span
+            ><span>11 CONTRA 11<br /><b>Você contra a máquina.</b></span>
+          </div>
+        </section>
+        <section class="match-card">
+          <div class="card-top">
+            <span>PARTIDA RÁPIDA</span><span class="chip">AMISTOSO</span>
+          </div>
+          <div class="teams">
+            <div>
+              <div class="crest crest-home">
+                <span>A</span><small>1924</small>
+              </div>
+              <h3>Atlético</h3>
+              <span>VOCÊ</span>
+            </div>
+            <span class="versus">VS</span>
+            <div>
+              <div class="crest crest-away">
+                <span>U</span><small>1908</small>
+              </div>
+              <h3>União</h3>
+              <span>COMPUTADOR</span>
+            </div>
+          </div>
+          <div class="mode-select">
+            <label for="game-mode">Modo de jogo</label>
+            <select id="game-mode" aria-describedby="game-mode-help">
+              <option value="match">Partida</option>
+              <option value="training">Arena de treino</option>
+            </select>
+            <p id="game-mode-help" class="mode-help" aria-live="polite">
+              Partida com adversários em movimento e tempo regulamentar.
+            </p>
+          </div>
+          <div class="match-options">
+            <label
+              >Dificuldade<select id="difficulty">
+                <option value="normal">Profissional</option>
+                <option value="easy">Amador</option>
+                <option value="hard">Craque</option>
+              </select></label
+            ><label
+              >Duração<select id="duration">
+                <option value="360">6 minutos</option>
+                <option value="180">3 minutos</option>
+                <option value="600">10 minutos</option>
+              </select></label
+            >
+            <div>
+              <span>Estádio</span
+              ><strong>Arena Campo <span class="sun">☀</span></strong>
+            </div>
+          </div>
+          <button class="primary" id="start-btn">
+            Entrar em campo <span>↗</span>
+          </button>
+          <div class="card-foot">
+            <span class="status-dot"></span> SEM DOWNLOAD. SÓ FUTEBOL.
+          </div>
+        </section>
+        <div class="home-footer">
+          <span>FEITO PARA JOGAR.</span>
+          <div>
+            <span>01 /</span> FIM DE TARDE
+            <span class="footer-line"></span> GRAMADO NATURAL
+          </div>
+          <span>PRÉVIA JOGÁVEL · v0.1</span>
+        </div>
+      </main>
+      <div id="hud" hidden>
+        <div class="scoreboard">
+          <span class="competition" id="mode-indicator">AMISTOSO</span
+          ><span class="team-name home-team">ATL</span
+          ><strong id="score">0 <span>:</span> 0</strong
+          ><span class="team-name away-team">UNI</span
+          ><span id="match-clock">00:00</span><span class="period">1º</span>
+        </div>
+        <button id="pause-btn" class="pause-button" aria-label="Pausar">
+          Ⅱ
+        </button>
+        <div id="event-toast"></div>
+        <div class="player-panel">
+          <div class="player-number" id="player-number">10</div>
+          <div>
+            <small>ATLÉTICO <span>•</span> VOCÊ</small
+            ><strong id="player-name">D. SILVA</strong>
+            <div class="stamina"><i id="stamina-fill"></i></div>
+          </div>
+          <span class="possession" id="possession">COM A BOLA</span>
+        </div>
+        <div id="radar">
+          <svg viewBox="0 0 180 116" aria-label="Radar do campo">
+            <rect x="3" y="3" width="174" height="110" />
+            <path d="M90 3V113 M3 33H27V83H3 M177 33H153V83H177" />
+            <circle cx="90" cy="58" r="15" />
+            <g id="radar-dots"></g>
+          </svg>
+        </div>
+        <div class="power-wrap" id="power-wrap" hidden>
+          <span>FORÇA DO CHUTE</span>
+          <div><i id="power-fill"></i></div>
+        </div>
+        <div class="quick-controls">
+          <span><kbd>W A S D</kbd> Mover</span><span><kbd>J</kbd> Passe</span
+          ><span><kbd>ESPAÇO</kbd> Chute</span><span><kbd>Q</kbd> Trocar</span
+          ><span><kbd>SHIFT</kbd> Correr</span>
+        </div>
+      </div>
+      <button
+        id="controller-status"
+        class="controller-status"
+        aria-live="polite"
+      >
+        Controle: pressione um botão para conectar
+      </button>
+      <div id="performance">
+        <span class="status-dot"></span><span id="fps">—</span> FPS
+        <span class="perf-separator">/</span
+        ><span id="quality-label">ALTA</span>
+      </div>
+      <div id="modal" class="modal" hidden>
+        <section class="modal-card">
+          <button id="close-modal" class="close" aria-label="Fechar">×</button>
+          <div class="eyebrow">CAMPO / 26</div>
+          <h2 id="modal-title"></h2>
+          <div id="modal-body"></div>
+        </section>
+      </div>
+      <div id="loading">
+        <span class="brand">◈ CAMPO</span>
+        <p>Preparando o gramado…</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

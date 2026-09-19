@@ -1,0 +1,38 @@
+services:
+  futebol:
+    build:
+      context: /opt/futebol/current
+      dockerfile: Dockerfile
+    image: kmworks/futebol:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.futebol-kmworks.rule: (Host(`kmworks.dev`) || Host(`www.kmworks.dev`)) && (Path(`/futebol`) || PathPrefix(`/futebol/`))
+      traefik.http.routers.futebol-kmworks.priority: "100"
+      traefik.http.routers.futebol-kmworks.entrypoints: websecure
+      traefik.http.routers.futebol-kmworks.tls: "true"
+      traefik.http.routers.futebol-kmworks.tls.certresolver: letsencrypt
+      traefik.http.routers.futebol-kmworks.middlewares: futebol-slash,secure-headers@file,compress@file,futebol-strip
+      traefik.http.routers.futebol-kmworks.service: futebol-service
+      traefik.http.middlewares.futebol-slash.redirectregex.regex: ^(https?://[^/]+/futebol)(\?.*)?$
+      traefik.http.middlewares.futebol-slash.redirectregex.replacement: $${1}/$${2}
+      traefik.http.middlewares.futebol-slash.redirectregex.permanent: "true"
+      traefik.http.middlewares.futebol-strip.stripprefix.prefixes: /futebol
+      traefik.http.services.futebol-service.loadbalancer.server.port: "8080"
+networks:
+  proxy:
+    external: true
+    name: proxy
