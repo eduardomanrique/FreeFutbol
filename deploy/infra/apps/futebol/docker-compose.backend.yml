@@ -1,0 +1,37 @@
+# Optional backend overlay. Do not apply without an explicit deployment request.
+# Build context must contain package manifests, src, shared and server (not only dist).
+services:
+  futebol-backend:
+    build:
+      context: ${FUTEBOL_BACKEND_ROOT:-/opt/futebol/backend-current}
+      dockerfile: server/Dockerfile
+    image: kmworks/futebol-backend:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 96
+    environment:
+      ALLOWED_ORIGINS: https://kmworks.dev,https://www.kmworks.dev
+      MAX_ROOMS: '8'
+      MAX_MATCHES: '2'
+      TRUST_PROXY: '1'
+    networks: [proxy]
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: proxy
+      traefik.http.routers.futebol-backend.rule: (Host(`kmworks.dev`) || Host(`www.kmworks.dev`)) && PathPrefix(`/futebol/api/`)
+      traefik.http.routers.futebol-backend.priority: '200'
+      traefik.http.routers.futebol-backend.entrypoints: websecure
+      traefik.http.routers.futebol-backend.tls: 'true'
+      traefik.http.routers.futebol-backend.tls.certresolver: letsencrypt
+      traefik.http.routers.futebol-backend.middlewares: secure-headers@file
+      traefik.http.services.futebol-backend.loadbalancer.server.port: '8787'
+networks:
+  proxy:
+    external: true
+    name: proxy

@@ -1,10 +1,10 @@
 # Regras da mecânica — CAMPO
 
-Documento de referência, atualizado em 18/09/2026. As regras mais recentes prevalecem sobre decisões antigas. “Usuário” identifica requisitos pedidos na conversa; “implementação” identifica calibrações escolhidas no projeto. Os números são parâmetros de gameplay, não medições de atletas reais.
+Documento de referência, atualizado em 19/09/2026. As regras mais recentes prevalecem sobre decisões antigas. “Usuário” identifica requisitos pedidos na conversa; “implementação” identifica calibrações escolhidas no projeto. Os números são parâmetros de gameplay, não medições de atletas reais.
 
 ## Escopo e prioridades — usuário
 
-Jogo de futebol para navegador, local contra IA, por enquanto sem multiplayer. Aparência, física e performance são centrais. Referência de qualidade: futebol moderno de videogame; isso não significa que o protótipo já tenha essa fidelidade. A torcida não precisa de animação. Preferir movimentos humanos com joelhos, equilíbrio, transferência de peso e apoio dos pés, evitando deslizar pelo chão. Não publicar mudanças sem um pedido explícito de deploy (regra atual, substitui autorização anterior).
+Jogo de futebol para navegador, com modo local contra IA e treino. Em 19/09 o usuário autorizou implementar o backend autoritativo e o multiplayer privado; o modo online local está descrito em [backend.md](backend.md). Aparência, física e performance são centrais. Referência de qualidade: futebol moderno de videogame; isso não significa que o protótipo já tenha essa fidelidade. A torcida não precisa de animação. Preferir movimentos humanos com joelhos, equilíbrio, transferência de peso e apoio dos pés, evitando deslizar pelo chão. Não publicar mudanças sem um pedido explícito de deploy (regra atual, substitui autorização anterior).
 
 ## Instrução obrigatória para IAs e agentes
 
@@ -133,3 +133,7 @@ Colocação de apoio: passada0,18s, alvo lateral0,28m, tolerância de proximidad
 
 ## Carga rápida e chute com embalo — usuário (18/09)
 A barra enche em0,315s (35% dos0,9s anteriores). O limite de segurar demais continua em1,3s. Ao carregar, um toque de condução anteriormente agendado não pode parar/redirecionar a bola; ela segue a física livre até o contato do chute. A preparação usa previsão de rolamento para colocar o apoio na região futura de contato. Durante a aproximação do chute, não se usa o comando de recuperação para trás da condução. O corpo freia/aproxima com inércia, inclina-se um pouco para trás quando carrega sobre apoio e acompanha o contato. Finalizações iniciadas em movimento podem receber até2,5m/s adicionais proporcionais à carga e à velocidade residual na direção do chute. Não há bônus para chutes iniciados parado; os parâmetros são calibrações de jogabilidade.
+
+## Multiplayer autoritativo — 19/09
+
+Cada participante controla um time; o servidor executa movimento, IA, bola, contatos, carga, gols e relógio. Clientes enviam intenções, sem autoridade sobre posição ou resultado. Os estados por time são independentes. O modo offline mantém as regras anteriores. No online, abrir o menu/perder foco cancela a carga e neutraliza comandos, mas não pausa a partida. A perda de socket interrompe a partida no servidor, com prazo de retomada. Interpolação visual e limites atuais: [backend.md](backend.md). Nenhuma publicação foi realizada neste trabalho.

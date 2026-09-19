@@ -1,5 +1,9 @@
 # Plano de multiplayer por código — 18/09/2026
 
+> **Histórico de planejamento, superado em 19/09/2026:** o usuário optou por servidor autoritativo. A implementação atual usa Node.js, Rapier e WebSocket, sem anfitrião autoritativo ou WebRTC/TURN. Consulte [backend.md](backend.md) para comportamento implementado e limitações. O restante deste documento preserva a proposta anterior, não o estado atual.
+
+Detalhamento proposto do serviço de salas, contratos, infraestrutura e entregas: [plano do backend — 19/09/2026](plano-backend.md). Ambos os documentos descrevem trabalho futuro.
+
 Proposta, ainda não implementada. Escopo inicial: duas pessoas, cada uma controla um time e troca o atleta selecionado; os demais atletas continuam com IA. Treino e partida offline continuam disponíveis. Entrada por código curto ou link, como a experiência descrita do Justcards. O código-fonte do Justcards não foi inspecionado; reaproveitar sua implementação depende dessa revisão.
 
 ## Dificuldade e arquitetura

@@ -1,6 +1,6 @@
 # CAMPO 26
 
-Protótipo original de futebol 3D para navegador, single-player, com equipes fictícias. Three.js/WebGL, Rapier/WASM e Vite; sem servidor de jogo e sem serviços externos em runtime.
+Protótipo original de futebol 3D para navegador, com equipes fictícias. Three.js/WebGL, Rapier/WASM e Vite. Oferece partida offline, treino e multiplayer privado por código com backend autoritativo Node.js. O multiplayer foi implementado localmente; a publicação vigente continua sendo a versão anterior.
 
 ## Executar
 
@@ -10,6 +10,14 @@ npm run dev
 ```
 
 Abra o endereço indicado pelo Vite. Para gerar arquivos estáticos: `npm run build`. Para testar a versão compilada: `npm run preview`.
+
+## Multiplayer online (local)
+
+Execute também `npm run server`, mantendo `npm run dev` aberto. Selecione **Online · por código**, crie uma sala e compartilhe o código/link. Os dois participantes confirmam **Estou pronto** e o criador inicia. Atlético ataca à direita; União, à esquerda. O menu online não pausa a partida. Sessões podem reconectar por até 30 s após a detecção de desconexão.
+
+O servidor executa física e regras a 120 Hz em workers; clientes enviam comandos por WebSocket e recebem estados a 20 Hz. A apresentação usa interpolação de 75 ms; previsão local de movimento e compensação de latência ainda não estão implementadas. Salas ficam em memória, sem cadastro ou ranking. Offline e treino não dependem do backend.
+
+[Operação, protocolo, limites, testes e publicação do backend](docs/backend.md). No desenvolvimento, os IPs IPv4 privados deste computador são aceitos automaticamente na porta 5173; abra esse endereço também no celular. Para domínio, HTTPS ou outra origem, configure `ALLOWED_ORIGINS` explicitamente. Não houve deploy do multiplayer.
 
 ## Jogar
 
@@ -96,7 +104,7 @@ Assets CC0 de Quaternius; [créditos e alterações](public/assets/athlete/CREDI
 
 Jogue em **https://kmworks.dev/futebol/** (também disponível em www). Publicado no VPS KMWorks usando Nginx não-root, Docker Compose e Traefik/HTTPS, como o Potions. Configuração em `deploy/infra/apps/futebol`; estado da publicação em `deploy/release.json`. Infraestrutura versionada em `kmworks-infra`.
 
-Build usa caminhos relativos para funcionar em subdiretório. Apenas `dist/`, Dockerfile, nginx.conf e manifesto de hashes entram no release. `/opt/futebol/current` aponta para um release versionado; consulte o README da infraestrutura para deploy e rollback.
+Build usa caminhos relativos para funcionar em subdiretório. O release estático inclui apenas `dist/`, Dockerfile, nginx.conf e manifesto de hashes. O novo backend tem empacotamento separado e overlay de infraestrutura, ainda não aplicados; consulte [docs/backend.md](docs/backend.md). `/opt/futebol/current` aponta para um release versionado; consulte o README da infraestrutura para deploy e rollback.
 
 Condução ajusta o avanço da bola e o intervalo entre toques à velocidade, com preferência pelo pé direito. Bolas adiantadas geram aproximação e recuperação automática; mudanças de direção exigem contato corretivo. A bola continua livre entre impulsos e pode ser tomada por adversários. Pesquisa, escolhas e limites: [docs/pesquisa-conducao.md](docs/pesquisa-conducao.md).
 

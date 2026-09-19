@@ -97,6 +97,13 @@ try {
   assert.equal((await state()).lastAction, "lob");
   await update([]);
   await reset();
+  // This assertion tests release, not a subsequent AI interception. Keep the
+  // shot lane clear so the opponent cannot legitimately own it 450 ms later.
+  await page.evaluate(() => {
+    for (const p of window.__test.match.players) if (p.id !== 9) {
+      p.z = 25; p.homeZ = 25; p.vx = p.vz = 0;
+    }
+  });
   await update([2], [0, 0], 450);
   assert.ok((await state()).charge > 0.45);
   assert.equal((await state()).charging, true);

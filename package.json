@@ -7,17 +7,21 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/physics.test.js tests/gamepad.test.js tests/athlete.test.js tests/locomotion.test.js tests/interactions.test.js tests/motion.test.js tests/rapier.test.js tests/reception.test.js tests/ball-actions.test.js tests/dribbling.test.js tests/goalkeeper.test.js tests/training.test.js",
+    "test": "node --test tests/physics.test.js tests/gamepad.test.js tests/athlete.test.js tests/locomotion.test.js tests/interactions.test.js tests/motion.test.js tests/rapier.test.js tests/reception.test.js tests/ball-actions.test.js tests/dribbling.test.js tests/goalkeeper.test.js tests/training.test.js tests/multiplayer.test.js tests/server.test.js tests/worker.test.js tests/network-conditions.test.js",
     "test:browser": "node tests/browser.test.js",
     "format": "prettier --write src index.html tests/physics.test.js tests/browser.test.js",
     "test:controller": "node tests/controller-browser.js",
-    "build:motion": "node scripts/build-motion-library.mjs"
+    "build:motion": "node scripts/build-motion-library.mjs",
+    "server": "node server/index.js",
+    "test:online": "node tests/online-browser.js",
+    "benchmark:server": "node scripts/benchmark-server.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
     "@fontsource/barlow-condensed": "^5.3.0",
     "@fontsource/dm-sans": "^5.3.0",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "playwright": "^1.51.0",

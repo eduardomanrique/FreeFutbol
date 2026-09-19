@@ -23,7 +23,8 @@
           ><button class="nav" id="nav-settings">Configurações</button>
         </nav>
         <div class="header-right">
-          <span class="status-dot"></span> LOCAL <span class="divider"></span
+          <span class="status-dot"></span>
+          <span id="connection-label">LOCAL</span> <span class="divider"></span
           ><button
             id="sound"
             class="icon-button"
@@ -41,6 +42,7 @@
           </button>
         </div>
       </header>
+      <div id="network-banner" hidden role="status" aria-live="polite"></div>
       <main id="home">
         <div class="scene-caption">
           <span class="live-dot"></span> ARENA CAMPO
@@ -84,6 +86,7 @@
             <select id="game-mode" aria-describedby="game-mode-help">
               <option value="match">Partida</option>
               <option value="training">Arena de treino</option>
+              <option value="online">Online · por código</option>
             </select>
             <p id="game-mode-help" class="mode-help" aria-live="polite">
               Partida com adversários em movimento e tempo regulamentar.
@@ -107,6 +110,42 @@
               <span>Estádio</span
               ><strong>Arena Campo <span class="sun">☀</span></strong>
             </div>
+          </div>
+          <div id="online-panel" hidden>
+            <div id="online-entry">
+              <button id="online-create" class="primary">
+                Criar sala <span>↗</span>
+              </button>
+              <div class="online-join-row">
+                <input
+                  id="room-code"
+                  aria-label="Código da sala"
+                  placeholder="CÓDIGO"
+                  maxlength="6"
+                  autocomplete="off"
+                  spellcheck="false"
+                /><button id="online-join" class="secondary">Entrar</button>
+              </div>
+            </div>
+            <div id="online-lobby" hidden>
+              <p class="online-room">SALA <strong id="online-code"></strong></p>
+              <p id="online-members" class="mode-help"></p>
+              <div class="online-buttons">
+                <button id="online-share" class="secondary">
+                  Copiar convite</button
+                ><button id="online-leave" class="secondary">Sair</button>
+              </div>
+              <button id="online-ready" class="primary">Estou pronto</button>
+              <button id="online-start" class="secondary" disabled>
+                Iniciar partida
+              </button>
+            </div>
+            <p
+              id="online-message"
+              class="mode-help"
+              role="status"
+              aria-live="polite"
+            ></p>
           </div>
           <button class="primary" id="start-btn">
             Entrar em campo <span>↗</span>
@@ -139,7 +178,8 @@
         <div class="player-panel">
           <div class="player-number" id="player-number">10</div>
           <div>
-            <small>ATLÉTICO <span>•</span> VOCÊ</small
+            <small
+              ><span id="player-team">ATLÉTICO</span> <span>•</span> VOCÊ</small
             ><strong id="player-name">D. SILVA</strong>
             <div class="stamina"><i id="stamina-fill"></i></div>
           </div>

@@ -8,8 +8,8 @@ Quando o jogador clicar para passar ou chutar estando longe da bola, manter a a�
 
 O chute forte está preciso demais. Aumentar a dispersão e/ou reduzir o índice de precisão conforme a força aumenta, mantendo a direção geral para o gol e preservando a possibilidade de uma finalização forte bem executada. Validar em distâncias curta, média e longa para não tornar todos os chutes aleatórios.
 
-## Multiplayer inspirado no Justcards
+## Multiplayer por código — implementado localmente em 19/09
 
-Planejar uma arquitetura em que cada cliente controla os jogadores do seu próprio lado e envia atualizações para o outro cliente. O backend seria bem leve, funcionando principalmente como servidor de mensagens/sinalização, sem executar toda a física. Uma mensagem pode descrever a próxima ação ou intenção — por exemplo, posição-alvo e velocidade — e os cálculos gerais podem acontecer nos clientes.
+O usuário aprovou servidor autoritativo após discutir a proposta original de mensageiro leve. Foram implementados salas, sessões, controle por time, simulação no servidor, sincronização WebSocket e reconexão. Consulte [backend.md](backend.md).
 
-Antes de implementar, definir sincronização de ticks, autoridade sobre bola/contatos/gols, correção de divergências, perda e ordem de mensagens, reconexão e proteção contra trapaça. Comparar o custo dessa abordagem com um servidor autoritativo quando o multiplayer entrar no escopo.
+Pendências para evolução competitiva: previsão local/reconciliação de comandos, compensação de latência, validação de redes reais/degradadas e benchmark no VPS. Contas, ranking e persistência não fazem parte da entrega atual. Deploy depende de pedido explícito.

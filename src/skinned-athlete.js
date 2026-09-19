@@ -291,7 +291,9 @@ export function animateSkinnedAthlete(rig, p, match) {
   rig.torso.rotateZ(
     -(l.leanX * Math.cos(l.heading) - l.leanZ * Math.sin(l.heading)) * 0.5,
   );
-  const charge = match.charging && match.selected === p.id ? match.charge : 0;
+  const control = match.controls[p.team];
+  const charge =
+    control.charging && control.selected === p.id ? control.charge : 0;
   rig.torso.rotateY(-charge * 0.16 + (p.actionTwist || 0));
   const recovery = p.recoveryDuration
     ? (p.recovery || 0) / p.recoveryDuration

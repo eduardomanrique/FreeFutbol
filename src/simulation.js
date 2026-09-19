@@ -71,7 +71,21 @@ const names = [
 ];
 const numbers = [1, 2, 4, 3, 6, 8, 5, 7, 11, 10, 9];
 export class Match {
-  constructor({ random = Math.random } = {}) {
+  constructor({
+    random = Math.random,
+    multiplayer = false,
+    headless = false,
+  } = {}) {
+    this.activeTeam = 0;
+    this.multiplayer = multiplayer;
+    this.headless = headless;
+    this.controls = [0, 1].map((team) => ({
+      selected: team * 11 + 9,
+      charge: 0,
+      charging: false,
+      actionPlayer: null,
+      lastInput: {},
+    }));
     this.random = random;
     this.ballFlight = 0;
     this.mode = "home";
@@ -94,6 +108,57 @@ export class Match {
     this.physics = new FootballPhysics();
     this.resetPlayers();
   }
+  get selected() {
+    return this.controls[this.activeTeam].selected;
+  }
+  set selected(value) {
+    this.controls[this.activeTeam].selected = value;
+  }
+  get charge() {
+    return this.controls[this.activeTeam].charge;
+  }
+  set charge(value) {
+    this.controls[this.activeTeam].charge = value;
+  }
+  get charging() {
+    return this.controls[this.activeTeam].charging;
+  }
+  set charging(value) {
+    this.controls[this.activeTeam].charging = value;
+  }
+  get actionPlayer() {
+    return this.controls[this.activeTeam].actionPlayer;
+  }
+  set actionPlayer(value) {
+    this.controls[this.activeTeam].actionPlayer = value;
+  }
+  get lastInput() {
+    return this.controls[this.activeTeam].lastInput;
+  }
+  set lastInput(value) {
+    this.controls[this.activeTeam].lastInput = value;
+  }
+  withTeam(team, fn) {
+    const previous = this.activeTeam;
+    this.activeTeam = team;
+    try {
+      return fn();
+    } finally {
+      this.activeTeam = previous;
+    }
+  }
+  isControlled(p) {
+    return (
+      (p.team === 0 || this.multiplayer) &&
+      this.controls[p.team].selected === p.id
+    );
+  }
+  selectForTeam(p) {
+    if (p.team === 0 || this.multiplayer) this.controls[p.team].selected = p.id;
+  }
+  cancelAllActions() {
+    for (const team of [0, 1]) this.withTeam(team, () => this.cancelAction());
+  }
   attachMotionLibrary(library) {
     this.motionLibrary = library;
     this.players.forEach(
@@ -102,6 +167,14 @@ export class Match {
   }
   resetPlayers(kickTeam = 0) {
     if (this.training) kickTeam = 0;
+    for (const [team, control] of this.controls.entries())
+      Object.assign(control, {
+        selected: team * 11 + 9,
+        charge: 0,
+        charging: false,
+        actionPlayer: null,
+        lastInput: {},
+      });
     this.players = [];
     for (let t = 0; t < 2; t++)
       formation.forEach(([x, z], i) =>
@@ -189,7 +262,7 @@ export class Match {
   }
   switchPlayer() {
     let candidates = this.players.filter(
-      (p) => p.team === 0 && !p.keeper && p.id !== this.selected,
+      (p) => p.team === this.activeTeam && !p.keeper && p.id !== this.selected,
     );
     candidates.sort(
       (a, b) =>
@@ -217,7 +290,7 @@ export class Match {
       type,
       stage: "charging",
       heldSeconds: 0,
-      approachSpeed: length(p.vx,p.vz),
+      approachSpeed: length(p.vx, p.vz),
       requiresPlant: true,
       power: 0,
       aim,
@@ -288,6 +361,7 @@ export class Match {
   }
   cancelAction() {
     for (const p of this.players) {
+      if (p.team !== this.activeTeam) continue;
       p.ballAction = null;
       if (p.ballMotion?.kind === "strike") {
         p.locomotion.feet[p.ballMotion.foot].special = null;
@@ -374,8 +448,11 @@ export class Match {
       const tx = goalX,
         tz = targetZ + error;
       const d = length(tx - b.x, tz - b.z) || 1;
-      const momentum = a.approachSpeed > 1 ?
-        clamp((p.vx * a.aim.x + p.vz * a.aim.z - 1) * 0.35, 0, 2.5) * a.power : 0;
+      const momentum =
+        a.approachSpeed > 1
+          ? clamp((p.vx * a.aim.x + p.vz * a.aim.z - 1) * 0.35, 0, 2.5) *
+            a.power
+          : 0;
       const speed =
         (9 + Math.pow(a.power, 0.75) * 36 + momentum) * (a.finesse ? 0.86 : 1);
       const flight = Math.max(0.15, d / speed);
@@ -424,7 +501,7 @@ export class Match {
         contactAt: this.elapsed,
         delay: this.elapsed - a.releasedAt,
       };
-      if (p.team === 0) this.selected = q.id;
+      this.selectForTeam(q);
       this.lastAction = a.type;
     }
     p.followStyle = a.style;
@@ -601,12 +678,12 @@ export class Match {
       b.vx = p.dx * 10;
       b.vz = p.dz * 10;
       b.vy = 0.8;
-      b.lastTeam = 0;
+      b.lastTeam = p.team;
       this.kickCooldown = 0.17;
     }
     this.lastAction = slide ? "slide" : "tackle";
   }
-  update(dt, input = {}) {
+  update(dt, input = {}, opponentInput = {}) {
     if (
       this.mode === "home" ||
       this.mode === "paused" ||
@@ -631,19 +708,23 @@ export class Match {
       return;
     }
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
-    this.lastInput = { ...input };
-    this.aimAction(input);
-    if (this.charging) {
-      this.charge = Math.min(1, this.charge + dt / 0.315);
-      const active = this.players[this.actionPlayer]?.ballAction;
-      if (active) {
-        active.heldSeconds = (active.heldSeconds || 0) + dt;
-        if (active.heldSeconds >= 1.3) {
-          this.releaseAction(1);
-          active.overcharged = true;
+    for (const team of this.multiplayer ? [0, 1] : [0])
+      this.withTeam(team, () => {
+        const teamInput = team === 0 ? input : opponentInput;
+        this.lastInput = { ...teamInput };
+        this.aimAction(teamInput);
+        if (this.charging) {
+          this.charge = Math.min(1, this.charge + dt / 0.315);
+          const active = this.players[this.actionPlayer]?.ballAction;
+          if (active) {
+            active.heldSeconds = (active.heldSeconds || 0) + dt;
+            if (active.heldSeconds >= 1.3) {
+              this.releaseAction(1);
+              active.overcharged = true;
+            }
+          }
         }
-      }
-    }
+      });
     let b = this.ball,
       owner = b.owner === null ? null : this.players[b.owner];
     // The opposition cannot receive or own the ball in training mode. This
@@ -655,13 +736,15 @@ export class Match {
     let chasers = [0, 1].map(
       (t) =>
         this.players
-          .filter((p) => p.team === t && !p.keeper && p.id !== this.selected)
+          .filter((p) => p.team === t && !p.keeper && !this.isControlled(p))
           .sort(
             (a, c) =>
               length(a.x - b.x, a.z - b.z) - length(c.x - b.x, c.z - b.z),
           )[0]?.id,
     );
     for (let p of this.players) {
+      const input = this.controls[p.team].lastInput;
+      const control = this.controls[p.team];
       p.kick = Math.max(0, p.kick - dt * 1.15);
       p.reachCooldown = Math.max(0, (p.reachCooldown || 0) - dt);
       p.reach = canContestBall(p, owner, b, this.elapsed)
@@ -677,7 +760,8 @@ export class Match {
           : undefined;
       if (p.ballAction && b.owner !== p.id) {
         p.ballAction = null;
-        if (this.actionPlayer === p.id) this.cancelAction();
+        if (control.actionPlayer === p.id)
+          this.withTeam(p.team, () => this.cancelAction());
       }
       const action = p.ballAction;
       const movement = action ? action.movement : input;
@@ -716,7 +800,7 @@ export class Match {
         p.goalkeeping.holding = false;
         p.goalkeeping.prediction = null;
         p.goalkeeping.result = null;
-      } else if (p.id === this.selected) {
+      } else if (this.isControlled(p)) {
         let ix = movement.x || 0,
           iz = movement.z || 0,
           l = length(ix, iz);
@@ -732,7 +816,8 @@ export class Match {
               : 5.8) * Math.min(1, l);
         if (action)
           speed *=
-            1 - 0.2 * (action.stage === "pending" ? action.power : this.charge);
+            1 -
+            0.2 * (action.stage === "pending" ? action.power : control.charge);
         p.jockey = !!input.jockey;
         tx = p.x + ix * 10;
         tz = p.z + iz * 10;
@@ -802,7 +887,7 @@ export class Match {
           const away = (input.x || 0) * rx + (input.z || 0) * rz < -0.15 * rd;
           if (length(p.vx, p.vz) < 3.5)
             p.faceHeading = Math.atan2(b.x - p.x, b.z - p.z);
-          if (rd > 0.8 && (p.id !== this.selected || !away)) {
+          if (rd > 0.8 && (!this.isControlled(p) || !away)) {
             tx = p.reach.x;
             tz = p.reach.z;
             speed = Math.max(speed, Math.min(3.5, (rd - 0.65) * 5));
@@ -846,7 +931,7 @@ export class Match {
       // A bounded launch phase starts only when sprinting out of rest, not
       // whenever a cut or a recovery happens to slow the player down.
       const sprintRequested =
-        p.id === this.selected &&
+        this.isControlled(p) &&
         movement.sprint &&
         !movement.jockey &&
         !action &&
@@ -907,16 +992,16 @@ export class Match {
           : null;
       p.moveIntent = { x: targetX, z: targetZ };
       stepLocomotion(p, targetX, targetZ, dt, {
-        charging: this.charging && p.id === this.selected && b.owner === p.id,
-        charge: this.charge,
+        charging: control.charging && this.isControlled(p) && b.owner === p.id,
+        charge: control.charge,
         reach: p.reach,
       });
       if (p.keeper && (!this.training || p.team === 0))
         stepKeeper(p, b, this.elapsed, dt);
       p.warpVelocity = { x: 0, z: 0 };
-      if (p.motion) {
+      if (p.motion || this.headless) {
         const preparing =
-          this.charging && this.selected === p.id && b.owner === p.id;
+          control.charging && this.isControlled(p) && b.owner === p.id;
         if (p.reach && !p.wasReaching) {
           const heading = p.locomotion.heading;
           const target = preparing
@@ -949,9 +1034,13 @@ export class Match {
     this.tryAutomaticReception(input, dt);
     this.updateGoalkeepers(dt);
     this.physics.preparePlayers(this.players, dt, this.training);
-    this.updateBallControl(dt);
+    this.withTeam(this.players[this.ball.owner]?.team ?? 0, () =>
+      this.updateBallControl(dt),
+    );
     this.integrateBall(dt);
-    this.players.forEach((p) => p.motion?.update(p, this, dt));
+    this.players.forEach((p) =>
+      this.withTeam(p.team, () => p.motion?.update(p, this, dt)),
+    );
   }
   updateGoalkeepers(dt) {
     const b = this.ball;
@@ -1032,7 +1121,9 @@ export class Match {
         p.challenge = null;
         continue;
       }
-      const intent = p.id === this.selected ? input : p.moveIntent;
+      const intent = this.isControlled(p)
+        ? this.controls[p.team].lastInput
+        : p.moveIntent;
       const opportunity = receptionOpportunity(p, b, intent);
       if (!opportunity) {
         p.challenge = null;
@@ -1104,7 +1195,8 @@ export class Match {
         lost.ballMotion = null;
         lost.ballAction = null;
         lost.receptionAttempt = null;
-        if (this.actionPlayer === lost.id) this.cancelAction();
+        if (this.controls[lost.team].actionPlayer === lost.id)
+          this.withTeam(lost.team, () => this.cancelAction());
       }
       p.reach = null;
       p.receptionAttempt = null;
@@ -1121,7 +1213,7 @@ export class Match {
       p.touchCooldown = 0.08;
       p.reachCooldown = 0.3;
       this.kickCooldown = 0.3;
-      if (p.team === 0) this.selected = p.id;
+      this.selectForTeam(p);
       break;
     }
   }
@@ -1171,7 +1263,7 @@ export class Match {
       );
   }
   restart(team, x, z, message) {
-    this.cancelAction();
+    this.cancelAllActions();
     if (this.training) team = 0;
     let p = this.players
       .filter((q) => q.team === team && !q.keeper)
@@ -1192,7 +1284,7 @@ export class Match {
       owner: p.id,
       lastTeam: team,
     });
-    if (team === 0) this.selected = p.id;
+    this.selectForTeam(p);
     this.kickCooldown = 0.8;
     p.think = 0.8;
     this.announce(message);

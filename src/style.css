@@ -1060,3 +1060,112 @@ body.playing .controller-status {
   font-size: 20px;
   line-height: 1.4;
 }
+
+/* Private online lobby, using the existing card and button styles. */
+#online-panel {
+  margin-top: 12px;
+}
+.online-join-row,
+.online-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+.online-join-row input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #52635b;
+  border-radius: 7px;
+  color: #fff;
+  background: #182721;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+.online-join-row button {
+  width: auto;
+}
+.online-buttons button {
+  flex: 1;
+}
+.online-room {
+  margin: 6px 0;
+  font-size: 13px;
+}
+.online-room strong {
+  font-size: 25px;
+  letter-spacing: 0.2em;
+  color: #c4f58a;
+}
+#online-start {
+  margin-top: 8px;
+}
+#online-message {
+  min-height: 1.4em;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+#network-banner {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  top: 80px;
+  transform: translateX(-50%);
+  max-width: 85vw;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #14251eee;
+  color: #c4f58a;
+  font-size: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+body.online-mode .match-card {
+  top: 145px;
+  bottom: auto;
+  width: 360px;
+  max-height: calc(100dvh - 250px);
+  overflow-y: auto;
+  z-index: 3;
+}
+body.online-mode .match-card .teams,
+body.online-mode .match-options label:first-child,
+body.online-mode .match-options > div {
+  display: none;
+}
+body.online-mode .match-options {
+  margin-bottom: 12px;
+}
+body.online-mode .mode-select {
+  margin-top: 18px;
+}
+body.online-mode:not(.playing) .controller-status,
+body.online-mode:not(.playing) #performance {
+  display: none;
+}
+@media (max-width: 850px) {
+  body.online-mode .match-card {
+    width: 320px;
+  }
+}
+@media (max-width: 620px) {
+  body.online-mode .hero {
+    display: none;
+  }
+  body.online-mode .match-card {
+    top: 125px;
+    left: 6%;
+    width: 88%;
+    max-height: calc(100dvh - 185px);
+  }
+  body.online-mode .match-options label {
+    display: flex;
+  }
+  body.online-mode .match-options label:first-child {
+    display: none;
+  }
+}

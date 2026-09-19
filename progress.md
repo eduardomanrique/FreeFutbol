@@ -224,3 +224,25 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 
 ## Regra de documentação para agentes —19 September
 - Added a mandatory instruction to `docs/regras-da-mecanica.md` and `README.md`: every implemented feature must be documented in the same work, and any changed/removed/replaced feature must have all affected descriptions updated to the current behavior.
+
+## Plano do backend —19 September
+- Reviewed existing multiplayer/backlog instructions, simulation control state and current static deployment. Added docs/plano-backend.md with proposed lightweight Node.js room/signaling backend, authenticated sessions, WebRTC/STUN/TURN, host authority, contracts, phased acceptance tests and infrastructure changes.
+- Planning only: no runtime changes, tests or deployment. Architecture choices are proposals; existing offline behavior remains the implemented version.
+
+## Authoritative backend implementation —19 September
+- User authorized full implementation after choosing server simulation. Added Node HTTP/WebSocket room/session server, bounded per-match workers running shared Rapier simulation at120Hz, authenticated per-team inputs,20Hz render snapshots, input timeout, room expiry, reconnect grace and server-owned scoring/actions.
+- Refactored simulation control state per team with offline API compatibility. Original93 tests passed; added two-team/ownership/protocol/server integration tests. Real socket tests verified admission race, malformed inputs, reconnect and explicit leave.
+- Added online create/join/ready/start interface, invitations, sessionStorage recovery, interpolated rendering and keyboard/controller action routing. Initial browser run exposed lobby watchdog treating a quiet room as dead; fixed by tracking all server traffic. Browser validation ongoing.
+- Added shared protocol, compression, benchmark script, optional Docker/Traefik backend overlay and separate release packager. No deployment. Docs updated to mark earlier host/WebRTC plans historical. Local prediction/rollback and competitive accounts/ranking remain out of scope of this implementation; latency/network/VPS limits documented.
+
+### Backend validation and limits
+-102 unit/integration tests now cover per-team controls, authoritative action clocks, timeout, auth/origin/admission, repeated inputs, slot limits, worker failure isolation and delayed WebSocket relay at30/80/150ms RTT with jitter/skipped snapshots. The latter is message omission, not TCP packet-loss validation.
+- Two-browser online flow passed including room readiness, server-owned shot, guest movement/selection, online menu without pause, reload/session resume, network outage/reconnect, leave and mobile width. Inspected lobby, guest gameplay and mobile screenshots; corrected guest HUD team label and ready-room wording. Final online controller rerun recorded below.
+- Offline browser regression and virtual Xbox controller regression passed without page errors. Controller shot fixture now clears the shot lane because an AI interception could legitimately take possession before its delayed assertion; strict release assertion retained. Required skill-client ran with movement/charge/release; screenshot/state inspected, no captured errors.
+- Local benchmark (Apple M3 Pro, Node20.19.4,10s simulated, single sequential thread):1/4/8 matches took342/1004/1708ms including serialization and one deflate per snapshot. Compressed snapshot ~7.5kB; estimated outgoing ~300kB/s per match for two clients. Not a VPS or worker capacity guarantee.
+- Production build passed (existing vendor-size warning). Docker Compose overlay config validated; backend archive packaging tested locally. No image build, live infrastructure change or deployment. Client-side prediction/contact latency compensation, real TCP-loss testing and VPS benchmark remain open and are documented in docs/backend.md.
+- Final verification:102/102 tests passed; production build passed with existing chunk-size warning. Final online browser rerun also verified virtual-controller switching on the guest team and the corrected UNIÃO HUD label; inspected updated screenshot. Offline browser/controller checks passed. Local Vite/backend left available for review; nothing deployed.
+
+## Mobile LAN origin fix —19 September
+- User could not join from phone: default origin allowlist only accepted localhost. Development now discovers this host's private IPv4 interface addresses on port5173; arbitrary LAN addresses/public interfaces are not trusted. Explicit ALLOWED_ORIGINS still overrides discovery and production does not auto-allow LAN interfaces.
+- Vite now pins port5173 with strictPort. Added HTTP create/join + WebSocket authentication regression using a LAN origin, denial tests for other hosts/ports, and production/explicit-list tests. Updated README and backend operations docs. Restarted local backend to apply; no deployment.

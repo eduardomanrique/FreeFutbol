@@ -5,6 +5,7 @@ import "@fontsource/dm-sans/latin-400.css";
 import "@fontsource/dm-sans/latin-500.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
+import { OnlineClient } from "./network/client.js";
 import { Match } from "./simulation.js";
 import { Stadium } from "./scene.js";
 import { ControllerInput } from "./gamepad.js";
@@ -39,6 +40,101 @@ let modalType = null,
   audio = null,
   lastSequence = 0,
   manualUntil = 0;
+const online = new OnlineClient({
+  onRoom(room, team) {
+    $("online-code").textContent = room.code;
+    $("duration").value = String(room.duration);
+    $("online-members").textContent = room.players
+      .map(
+        (p, i) =>
+          `${i === 0 ? "Atlético" : "União"}: ${!p ? "vaga livre" : !p.connected ? "reconectando" : p.ready ? "pronto" : "na sala"}`,
+      )
+      .join(" · ");
+    $("online-ready").hidden = room.status !== "waiting";
+    $("online-ready").textContent = room.players[team]?.ready
+      ? "Ainda não estou pronto"
+      : "Estou pronto";
+    $("online-start").hidden = team !== 0 || room.status !== "waiting";
+    $("online-start").disabled = !room.players.every(
+      (p) => p?.connected && p.ready,
+    );
+    $("online-lobby").hidden = false;
+    $("online-entry").hidden = true;
+    $("game-mode").disabled = true;
+    $("duration").disabled = true;
+    $("network-banner").hidden = false;
+  },
+  onStart() {
+    keys.clear();
+    controller.suspend();
+    shotSource = null;
+    closeModal(false);
+    setPlaying(true);
+  },
+  onEnd(reason) {
+    closeModal(false);
+    keys.clear();
+    shotSource = null;
+    match.activeTeam = 0;
+    match.multiplayer = false;
+    match.training = false;
+    match.mode = "home";
+    match.resetPlayers();
+    setPlaying(false);
+    $("online-lobby").hidden = true;
+    $("online-entry").hidden = false;
+    $("game-mode").disabled = false;
+    $("network-banner").hidden = true;
+    $("online-message").textContent = reason || "";
+    updateModeDescription();
+  },
+  onStatus(message) {
+    $("online-message").textContent = message;
+    $("network-banner").textContent = message;
+  },
+});
+function gameAction(method, ...args) {
+  if (!online.active) return match[method](...args);
+  if (method === "beginAction") return online.action("begin", args[0]);
+  if (method === "releaseAction") return online.action("release");
+  if (method === "switchPlayer") return online.action("switch");
+  if (method === "tackle") return online.action(args[0] ? "slide" : "tackle");
+  if (method === "cancelAction") return online.action("cancel");
+}
+async function enterOnline(join) {
+  const buttons = [$("online-create"), $("online-join")];
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const code = join ? $("room-code").value.trim().toUpperCase() : "";
+    if (join && !/^[A-Z2-9]{6}$/.test(code))
+      throw new Error("Digite o código de 6 caracteres.");
+    await online.enter(code, Number($("duration").value));
+  } catch (error) {
+    $("online-message").textContent = error.message;
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+$("online-create").onclick = () => enterOnline(false);
+$("online-join").onclick = () => enterOnline(true);
+$("online-ready").onclick = () =>
+  online.send({
+    type: "ready",
+    value: !online.room?.players[online.team]?.ready,
+  });
+$("online-start").onclick = () => online.send({ type: "start" });
+$("online-leave").onclick = () => online.leave();
+$("online-share").onclick = async () => {
+  const link = new URL(location.href);
+  link.search = "";
+  link.searchParams.set("room", online.room.code);
+  try {
+    await navigator.clipboard.writeText(link.href);
+    $("online-message").textContent = "Link copiado.";
+  } catch {
+    $("online-message").textContent = `Convide pelo código ${online.room.code}`;
+  }
+};
 function beep(freq = 600, duration = 0.15) {
   if (!soundOn) return;
   audio ??= new AudioContext();
@@ -60,10 +156,24 @@ function setPlaying(on) {
   document.body.classList.toggle("playing", on);
 }
 function updateModeDescription() {
+  const isOnline = $("game-mode").value === "online";
+  document.body.classList.toggle("online-mode", isOnline);
+  document.querySelector(".hero-bottom b").textContent = isOnline
+    ? "Você contra outra pessoa."
+    : "Você contra a máquina.";
+  $("online-panel").hidden = !isOnline;
+  $("connection-label").textContent = isOnline ? "ONLINE" : "LOCAL";
+  document.querySelector(".card-top .chip").textContent = isOnline
+    ? "ONLINE"
+    : "AMISTOSO";
+  $("start-btn").hidden = isOnline;
+  $("difficulty").disabled = isOnline;
   const training = $("game-mode").value === "training";
   $("game-mode-help").textContent = training
     ? "Adversários parados, incluindo o goleiro. Treino sem limite de tempo."
-    : "Partida com adversários em movimento e tempo regulamentar.";
+    : isOnline
+      ? "Convide alguém e jogue com um time de cada lado."
+      : "Partida com adversários em movimento e tempo regulamentar.";
   $("duration").disabled = training;
   $("duration").setAttribute(
     "aria-label",
@@ -71,6 +181,10 @@ function updateModeDescription() {
   );
 }
 function start() {
+  if ($("game-mode").value === "online") return;
+  if (online.active) online.leave();
+  match.activeTeam = 0;
+  match.multiplayer = false;
   keys.clear();
   controller.suspend();
   shotSource = null;
@@ -86,11 +200,11 @@ function start() {
 function showModal(type) {
   if (modalType === null) {
     previousMode = match.mode;
-    if (match.mode === "playing" || match.mode === "goal")
+    if (!online.active && (match.mode === "playing" || match.mode === "goal"))
       match.mode = "paused";
   }
   keys.clear();
-  match.cancelAction();
+  gameAction("cancelAction");
   shotSource = null;
   shotReleaseDelay = null;
   controller.suspend();
@@ -147,6 +261,14 @@ function showModal(type) {
     body = `<p class="result-score" style="font-size:32px;text-align:center">ATL ${match.score[0]} : ${match.score[1]} UNI</p><p class="modal-note">Fim de jogo na Arena Campo.</p><button id="restart" class="primary">Jogar novamente <span>↗</span></button><button id="leave" class="secondary">Voltar ao início</button>`;
   }
   $("modal-body").innerHTML = body;
+  if (online.active) {
+    $("restart")?.remove();
+    if (type === "pause") {
+      $("modal-title").textContent = "Menu da partida";
+      $("modal-body").querySelector(".modal-note").textContent =
+        "A partida online continua. Seus comandos ficam neutros enquanto este menu está aberto.";
+    }
+  }
   $("quality")?.addEventListener("change", (e) => {
     stadium.setQuality(e.target.value);
     $("quality-label").textContent = {
@@ -169,6 +291,10 @@ function showModal(type) {
   $("resume")?.addEventListener("click", () => closeModal());
   $("restart")?.addEventListener("click", start);
   $("leave")?.addEventListener("click", () => {
+    if (online.active) {
+      online.leave();
+      return;
+    }
     closeModal(false);
     match.mode = "home";
     match.resetPlayers();
@@ -235,7 +361,11 @@ window.addEventListener("keydown", (e) => {
     e.code !== "Tab"
   )
     e.preventDefault();
-  if (e.target instanceof HTMLSelectElement) return;
+  if (
+    e.target instanceof HTMLSelectElement ||
+    e.target instanceof HTMLInputElement
+  )
+    return;
   if (e.code === "Escape" && !e.repeat) {
     pause();
     return;
@@ -250,12 +380,12 @@ window.addEventListener("keydown", (e) => {
   }
   keys.add(e.code);
   if (match.mode !== "playing" || modalType || e.repeat) return;
-  if (e.code === "KeyQ") match.switchPlayer();
-  if (e.code === "KeyK") match.tackle();
+  if (e.code === "KeyQ") gameAction("switchPlayer");
+  if (e.code === "KeyK") gameAction("tackle");
   const type = { KeyJ: "pass", KeyL: "lob", Space: "shoot", KeyI: "through" }[
     e.code
   ];
-  if (type && match.beginAction(type, readInput())) {
+  if (type && gameAction("beginAction", type, readInput())) {
     shotStartedAt = performance.now();
     shotReleaseDelay = null;
     shotSource = "keyboard";
@@ -264,7 +394,11 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.code);
-  if (e.code === actionButton && match.charging && shotSource === "keyboard") {
+  if (
+    e.code === actionButton &&
+    (match.charging || online.active) &&
+    shotSource === "keyboard"
+  ) {
     releaseShot();
   }
 });
@@ -279,6 +413,8 @@ document.addEventListener("visibilitychange", () => {
 });
 let hudAccumulator = 0;
 function readInput() {
+  if (online.active && (modalType || document.hidden || !document.hasFocus()))
+    return { x: 0, z: 0 };
   const input = {
     x:
       (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
@@ -294,15 +430,17 @@ function readInput() {
   }
   input.sprint ||= !!controllerState.held.sprint;
   input.jockey = !!controllerState.held.jockey;
+  input.finesse = !!controllerState.held.finesse;
   return input;
 }
 function step(dt) {
   const input = readInput();
-  if (match.charging && shotReleaseDelay !== null) {
+  if ((match.charging || online.active) && shotReleaseDelay !== null) {
     shotReleaseDelay += dt;
     if (shotReleaseDelay >= 0.065) releaseShot();
   }
-  match.update(dt, input);
+  if (online.active) online.update(dt, input, match);
+  else match.update(dt, input);
   hudAccumulator += dt;
   if (hudAccumulator > 0.075) {
     updateHUD();
@@ -323,9 +461,18 @@ function updateHUD() {
     : mins < 45
       ? "1º"
       : "2º";
-  $("mode-indicator").textContent = training ? "ARENA DE TREINO" : "AMISTOSO";
+  $("mode-indicator").textContent = training
+    ? "ARENA DE TREINO"
+    : online.active
+      ? `ONLINE · ${online.rtt} ms`
+      : "AMISTOSO";
   $("score").innerHTML = `${match.score[0]} <span>:</span> ${match.score[1]}`;
   let p = match.players[match.selected];
+  $("player-team").textContent = p.team === 0 ? "ATLÉTICO" : "UNIÃO";
+  $("pause-btn").setAttribute(
+    "aria-label",
+    online.active ? "Menu da partida" : "Pausar",
+  );
   $("player-number").textContent = p.number;
   $("player-name").textContent = p.name;
   $("stamina-fill").style.width = `${p.stamina * 100}%`;
@@ -352,6 +499,16 @@ function updateHUD() {
 window.render_game_to_text = () =>
   JSON.stringify({
     ...match.snapshot(),
+    network: {
+      active: online.active,
+      team: online.team,
+      room: online.room?.code,
+      status: online.room?.status,
+      tick: online.tick,
+      ack: online.lastAck,
+      rtt: online.rtt,
+      bytes: online.bytes,
+    },
     controller: {
       connected: controllerState.connected,
       supported: controllerState.supported,
@@ -378,7 +535,12 @@ window.advanceTime = (ms) => {
 };
 // Scenario hooks are opt-in and never present in ordinary gameplay.
 if (new URLSearchParams(location.search).has("test"))
-  window.__test = { match, stadium, step: (ms) => window.advanceTime(ms) };
+  window.__test = {
+    match,
+    stadium,
+    online,
+    step: (ms) => window.advanceTime(ms),
+  };
 let last = performance.now(),
   accumulator = 0,
   frames = 0,
@@ -405,6 +567,13 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
+const inviteCode = new URLSearchParams(location.search).get("room");
+if (inviteCode) {
+  $("game-mode").value = "online";
+  $("room-code").value = inviteCode.toUpperCase();
+}
+online.resume();
+if (online.active) $("game-mode").value = "online";
 updateModeDescription();
 updateHUD();
 stadium.render(match, 1);
@@ -508,36 +677,40 @@ function pollController(now) {
     return;
   }
   if (match.mode !== "playing") return;
-  if (pressed.switch) match.switchPlayer();
+  if (pressed.switch) gameAction("switchPlayer");
   const hasBall = match.ball.owner === match.selected;
-  if (pressed.lob && !hasBall) match.tackle(true);
-  if (pressed.shoot && !hasBall) match.tackle();
+  if (pressed.lob && !hasBall) gameAction("tackle", true);
+  if (pressed.shoot && !hasBall) gameAction("tackle");
   for (const type of ["pass", "lob", "through", "shoot"]) {
-    if (pressed[type] && hasBall && match.beginAction(type, readInput())) {
+    if (
+      pressed[type] &&
+      hasBall &&
+      gameAction("beginAction", type, readInput())
+    ) {
       shotStartedAt = performance.now();
       shotReleaseDelay = null;
       shotSource = "controller";
       actionButton = type;
     }
   }
-  if (shotSource === "controller" && match.charging) {
+  if (shotSource === "controller" && (match.charging || online.active)) {
     if (state.released[actionButton]) shotReleaseDelay = 0;
     if (state.held[actionButton]) shotReleaseDelay = null;
   }
-  if (match.charging && shotReleaseDelay === null)
+  if (!online.active && match.charging && shotReleaseDelay === null)
     match.charge = Math.max(
       match.charge,
       Math.min(1, (now - shotStartedAt) / 900),
     );
 }
 function releaseShot() {
-  if (match.charging && match.mode === "playing") {
-    match.aimAction(readInput());
+  if ((match.charging || online.active) && match.mode === "playing") {
+    if (!online.active) match.aimAction(readInput());
     const power = Math.max(
       match.charge,
       Math.min(1, (performance.now() - shotStartedAt) / 900),
     );
-    if (match.releaseAction(power, !!controllerState.held.finesse))
+    if (gameAction("releaseAction", power, !!controllerState.held.finesse))
       beep(160, 0.1);
   }
   shotSource = null;
