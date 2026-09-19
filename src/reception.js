@@ -5,8 +5,15 @@ export const RECEPTION = {
   medium: { probability: 0.95, radius: 1.3, height: 0.65, reach: 1.08 },
   far: { probability: 0.9, radius: 2.25, height: 0.65, reach: 1.08 },
 };
+// Owned balls require a short, present-time challenge, not a predicted reception.
+export const POSSESSION_CHALLENGE = {
+  radius: 0.7,
+  height: 0.5,
+  reach: 0.55,
+  contact: 0.22,
+};
 // Classify the approaching ball relative to the moving receiver.
-// All reachable balls invite a reception, independently of directional input.
+// Reachable free balls invite reception independently of directional input.
 export function receptionOpportunity(p, b, input = {}) {
   if (
     b.owner === p.id ||
@@ -14,6 +21,24 @@ export function receptionOpportunity(p, b, input = {}) {
     Math.hypot(b.x - p.x, b.z - p.z) > 6
   )
     return null;
+  if (b.owner !== null) {
+    const distance = Math.hypot(b.x - p.x, b.z - p.z);
+    if (
+      distance > POSSESSION_CHALLENGE.radius ||
+      b.y > POSSESSION_CHALLENGE.height
+    )
+      return null;
+    return {
+      x: b.x,
+      y: b.y,
+      z: b.z,
+      distance,
+      time: 0,
+      kind: "near",
+      probability: RECEPTION.near.probability,
+      maxReach: POSSESSION_CHALLENGE.reach,
+    };
+  }
   const future = { ...b };
   let best = null;
   for (let i = 0; i <= 20; i++) {

@@ -338,3 +338,75 @@ test("sharp cuts lower the centre of mass and start body rotation before reversi
     m.physics.dispose();
   }
 });
+
+test("body blocks an automatic challenge from diagonally behind but exposed balls remain contestable", async () => {
+  const { canContestBall } = await import("../src/dribbling.js");
+  const owner = { id: 9, x: 0, z: 0 };
+  // Ray passes 0.45m from the carrier: previously outside the 0.38m mask.
+  const challenger = { x: -0.3, z: 0.45 };
+  assert.equal(
+    canContestBall(challenger, owner, { x: 0.3, z: 0.45 }, 1),
+    false,
+  );
+  assert.equal(
+    canContestBall({ x: 0.7, z: 0.8 }, owner, { x: 0.7, z: 0.3 }, 1),
+    true,
+  );
+  assert.equal(canContestBall(challenger, null, { x: 0.3, z: 0.45 }, 1), true);
+});
+
+test("forward pass escapes a marker on the back even with ball underneath the carrier", () => {
+  for (const ballX of [-0.2, 0, 0.2])
+    for (const side of [-0.4, 0, 0.4]) {
+      const m = new Match({ random: () => 0 });
+      m.start();
+      for (const p of m.players) {
+        p.x = p.team ? 40 : -40;
+        p.z = -24 + (p.id % 11) * 4;
+        p.keeper = true;
+        p.think = 99;
+        initLocomotion(p);
+      }
+      Object.assign(m.players[9], { x: 0, z: 0, keeper: false });
+      Object.assign(m.players[20], { x: -0.6, z: side, keeper: false });
+      Object.assign(m.players[10], { x: 12, z: 0 });
+      for (const id of [9, 20, 10]) initLocomotion(m.players[id]);
+      Object.assign(m.ball, { x: ballX, z: 0, owner: 9 });
+      assert.equal(m.beginAction("pass", { x: 1, z: 0 }), true);
+      for (let i = 0; i < 10; i++) m.update(dt, { x: 1, z: 0 });
+      assert.equal(m.releaseAction(), true);
+      for (let i = 0; i < 120 && !m.lastPass; i++) m.update(dt, { x: 1, z: 0 });
+      assert.ok(m.lastPass, "pass must make contact");
+      for (let i = 0; i < 36; i++) {
+        m.update(dt, {});
+        assert.notEqual(
+          m.ball.owner,
+          20,
+          `rear marker cannot collect through passer: ${ballX}/${side}`,
+        );
+      }
+      assert.ok(m.ball.x > 2, "verify forward travel, not only the kick event");
+      m.physics.dispose();
+    }
+});
+
+test("recent passer only screens a blocked path, not a defender in front", async () => {
+  const { canContestBall } = await import("../src/dribbling.js");
+  const m = new Match();
+  m.start();
+  Object.assign(m.players[9], { x: 0, z: 0 });
+  m.lastKicker = 9;
+  m.kickReleasedAt = m.elapsed;
+  const b = { x: 0.2, z: 0 };
+  assert.equal(
+    canContestBall({ x: -0.6, z: 0 }, m.recentKickScreen(), b, m.elapsed),
+    false,
+  );
+  assert.equal(
+    canContestBall({ x: 0.7, z: 0 }, m.recentKickScreen(), b, m.elapsed),
+    true,
+  );
+  m.elapsed += 0.36;
+  assert.equal(m.recentKickScreen(), null);
+  m.physics.dispose();
+});

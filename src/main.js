@@ -8,6 +8,7 @@ import "./style.css";
 import { OnlineClient } from "./network/client.js";
 import { Match } from "./simulation.js";
 import { Stadium } from "./scene.js";
+import { TouchInput } from "./touch.js";
 import { ControllerInput } from "./gamepad.js";
 import { Calibration, CALIBRATION_STEPS } from "./calibration.js";
 const $ = (id) => document.getElementById(id);
@@ -93,6 +94,70 @@ const online = new OnlineClient({
     $("network-banner").textContent = message;
   },
 });
+const mobileQuery = matchMedia("(any-pointer: coarse)");
+let mobile = mobileQuery.matches || navigator.maxTouchPoints > 0;
+const touch = new TouchInput($("touch-controls"), {
+  active: () => mobile && match.mode === "playing" && !modalType,
+  rotated: () => document.body.classList.contains("landscape-fallback"),
+  press(action) {
+    if (action === "switch") return gameAction("switchPlayer");
+    if (!["pass", "lob", "through", "shoot"].includes(action)) return;
+    if (match.ball.owner !== match.selected) {
+      if (action === "shoot" || action === "lob")
+        gameAction("tackle", action === "lob");
+      return;
+    }
+    if (shotSource) return;
+    if (gameAction("beginAction", action, readInput())) {
+      shotStartedAt = performance.now();
+      shotReleaseDelay = null;
+      shotSource = "touch";
+      actionButton = action;
+    }
+  },
+  release(action) {
+    if (shotSource === "touch" && actionButton === action) releaseShot();
+  },
+  cancel(action) {
+    if (shotSource === "touch" && (!action || action === actionButton)) {
+      gameAction("cancelAction");
+      shotSource = actionButton = shotReleaseDelay = null;
+    }
+  },
+});
+function mobileLayout() {
+  mobile = mobileQuery.matches || navigator.maxTouchPoints > 0;
+  const playing = document.body.classList.contains("playing");
+  document.body.classList.toggle("mobile", mobile);
+  document.body.classList.toggle(
+    "landscape-fallback",
+    mobile && playing && innerWidth < innerHeight,
+  );
+  $("touch-controls").hidden = !mobile || !playing || !!modalType;
+  stadium.resize();
+}
+async function mobileFullscreen() {
+  if (!mobile) return;
+  try {
+    if (!document.fullscreenElement)
+      await document.documentElement.requestFullscreen?.();
+  } catch {
+    /* Safari and embedded browsers may refuse fullscreen. */
+  }
+  try {
+    await screen.orientation?.lock?.("landscape");
+  } catch {}
+  mobileLayout();
+}
+mobileQuery.addEventListener("change", mobileLayout);
+window.addEventListener("resize", () => {
+  touch.reset();
+  mobileLayout();
+});
+window.visualViewport?.addEventListener("resize", mobileLayout);
+document.addEventListener("fullscreenchange", mobileLayout);
+mobileLayout();
+
 function gameAction(method, ...args) {
   if (!online.active) return match[method](...args);
   if (method === "beginAction") return online.action("begin", args[0]);
@@ -117,12 +182,17 @@ async function enterOnline(join) {
 }
 $("online-create").onclick = () => enterOnline(false);
 $("online-join").onclick = () => enterOnline(true);
-$("online-ready").onclick = () =>
+$("online-ready").onclick = () => {
+  mobileFullscreen();
   online.send({
     type: "ready",
     value: !online.room?.players[online.team]?.ready,
   });
-$("online-start").onclick = () => online.send({ type: "start" });
+};
+$("online-start").onclick = () => {
+  mobileFullscreen();
+  online.send({ type: "start" });
+};
 $("online-leave").onclick = () => online.leave();
 $("online-share").onclick = async () => {
   const link = new URL(location.href);
@@ -154,6 +224,13 @@ function setPlaying(on) {
   $("home").hidden = on;
   $("hud").hidden = !on;
   document.body.classList.toggle("playing", on);
+  touch.reset();
+  mobileLayout();
+  if (!on) {
+    screen.orientation?.unlock?.();
+    if (mobile && document.fullscreenElement)
+      document.exitFullscreen?.().catch(() => {});
+  }
 }
 function updateModeDescription() {
   const isOnline = $("game-mode").value === "online";
@@ -181,6 +258,7 @@ function updateModeDescription() {
   );
 }
 function start() {
+  mobileFullscreen();
   if ($("game-mode").value === "online") return;
   if (online.active) online.leave();
   match.activeTeam = 0;
@@ -198,6 +276,7 @@ function start() {
   beep(1700, 0.3);
 }
 function showModal(type) {
+  touch.reset();
   if (modalType === null) {
     previousMode = match.mode;
     if (!online.active && (match.mode === "playing" || match.mode === "goal"))
@@ -209,6 +288,7 @@ function showModal(type) {
   shotReleaseDelay = null;
   controller.suspend();
   modalType = type;
+  mobileLayout();
   $("modal").hidden = false;
   let body = "";
   if (type === "controls") {
@@ -225,6 +305,7 @@ function showModal(type) {
         ["Desarmar / carrinho", "X / B (sem bola)"],
         ["Passe em profundidade", "Y / I"],
         ["Proteger / marcar", "LT"],
+        ["Chute colocado · segurar RB ao soltar X", "RB + X"],
         ["Pausar", "MENU / ESC"],
         ["Tela cheia", "F"],
       ]
@@ -234,6 +315,10 @@ function showModal(type) {
         )
         .join("") +
       '<p class="modal-note">Conecte o controle e pressione um botão com esta página em foco. Nos menus: direcional para navegar, A confirma e B volta. O Atlético ataca para a direita. Direcione o jogador para escolher o passe; segure X ou espaço para carregar o chute. A barra sob o nome mostra o fôlego.</p>';
+  }
+  if (type === "controls" && mobile) {
+    body =
+      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Segure Passe, Alto, Lançar ou Chute para carregar e solte para executar; use o analógico para mirar. Sem a bola, Chute desarma e Alto dá carrinho. Trocar seleciona outro jogador. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
   }
   if (type === "settings") {
     $("modal-title").textContent = "Do seu jeito";
@@ -260,7 +345,23 @@ function showModal(type) {
           : "Tudo igual";
     body = `<p class="result-score" style="font-size:32px;text-align:center">ATL ${match.score[0]} : ${match.score[1]} UNI</p><p class="modal-note">Fim de jogo na Arena Campo.</p><button id="restart" class="primary">Jogar novamente <span>↗</span></button><button id="leave" class="secondary">Voltar ao início</button>`;
   }
+  if (type === "pause" && mobile) {
+    body +=
+      '<button id="mobile-fullscreen" class="secondary">Tela cheia</button><p id="fullscreen-help" class="modal-note" role="status"></p>';
+  }
   $("modal-body").innerHTML = body;
+  $("mobile-fullscreen")?.addEventListener("click", async () => {
+    await mobileFullscreen();
+    const help = $("fullscreen-help");
+    if (
+      help &&
+      !document.fullscreenElement &&
+      !matchMedia("(display-mode: standalone)").matches &&
+      !navigator.standalone
+    )
+      help.textContent =
+        "Este navegador não liberou tela cheia. No iPhone: Compartilhar → Adicionar à Tela de Início; abra o jogo pelo ícone.";
+  });
   if (online.active) {
     $("restart")?.remove();
     if (type === "pause") {
@@ -288,7 +389,10 @@ function showModal(type) {
   if ($("camera")) $("camera").value = stadium.cameraMode;
   $("pause-settings")?.addEventListener("click", () => showModal("settings"));
   $("pause-controls")?.addEventListener("click", () => showModal("controls"));
-  $("resume")?.addEventListener("click", () => closeModal());
+  $("resume")?.addEventListener("click", () => {
+    mobileFullscreen();
+    closeModal();
+  });
   $("restart")?.addEventListener("click", start);
   $("leave")?.addEventListener("click", () => {
     if (online.active) {
@@ -308,6 +412,7 @@ function closeModal(restore = true) {
   if (restore && match.mode === "paused") match.mode = previousMode;
   $("modal").hidden = true;
   modalType = null;
+  mobileLayout();
 }
 function pause() {
   if (modalType) {
@@ -413,6 +518,7 @@ document.addEventListener("visibilitychange", () => {
 });
 let hudAccumulator = 0;
 function readInput() {
+  if (modalType) return { x: 0, z: 0 };
   if (online.active && (modalType || document.hidden || !document.hasFocus()))
     return { x: 0, z: 0 };
   const input = {
@@ -428,7 +534,11 @@ function readInput() {
     input.x = controllerState.x;
     input.z = controllerState.z;
   }
-  input.sprint ||= !!controllerState.held.sprint;
+  if (!input.x && !input.z) {
+    input.x = touch.x;
+    input.z = touch.z;
+  }
+  input.sprint ||= !!controllerState.held.sprint || !!touch.held.sprint;
   input.jockey = !!controllerState.held.jockey;
   input.finesse = !!controllerState.held.finesse;
   return input;
@@ -516,6 +626,13 @@ window.render_game_to_text = () =>
       mapping: controllerState.mapping,
       x: controllerState.x,
       z: controllerState.z,
+    },
+    touch: {
+      enabled: mobile,
+      rotated: document.body.classList.contains("landscape-fallback"),
+      x: touch.x,
+      z: touch.z,
+      held: touch.held,
     },
     graphics: {
       quality: stadium.quality,
@@ -710,8 +827,7 @@ function releaseShot() {
       match.charge,
       Math.min(1, (performance.now() - shotStartedAt) / 900),
     );
-    if (gameAction("releaseAction", power, !!controllerState.held.finesse))
-      beep(160, 0.1);
+    if (gameAction("releaseAction", power, readInput().finesse)) beep(160, 0.1);
   }
   shotSource = null;
   shotReleaseDelay = null;

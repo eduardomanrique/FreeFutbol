@@ -506,8 +506,13 @@ export class Stadium {
     this.resize();
   }
   resize() {
-    this.renderer.setSize(innerWidth, innerHeight);
-    this.camera.aspect = innerWidth / innerHeight;
+    const { width, height } =
+      this.renderer.domElement.parentElement.getBoundingClientRect();
+    const rotated = document.body.classList.contains("landscape-fallback");
+    this.viewWidth = rotated ? height : width;
+    this.viewHeight = rotated ? width : height;
+    this.renderer.setSize(this.viewWidth, this.viewHeight);
+    this.camera.aspect = this.viewWidth / this.viewHeight;
     this.camera.updateProjectionMatrix();
   }
   render(match, dt = 0.016) {
@@ -557,14 +562,17 @@ export class Stadium {
       );
       target.set(bx, wide ? 0 : Math.min(1.5, match.ball.y * 0.25), bz);
       cam.set(bx + 3, wide ? 69 : 25, bz + (wide ? 66 : 31));
-      if (innerWidth < 650) {
+      if (document.body.classList.contains("mobile")) {
+        // Keep broadcast angle, bringing mobile athletes ~25% closer on screen.
+        cam.sub(target).multiplyScalar(0.8).add(target);
+      } else if (this.viewWidth < 650) {
         cam.y *= wide ? 1.35 : 1.16;
         cam.z += wide ? 12 : 5;
       }
     } else {
       target.set(2, 0, -3);
       cam.set(53, 74, 81);
-      if (innerWidth < 650) {
+      if (this.viewWidth < 650) {
         cam.set(70, 110, 105);
       }
     }

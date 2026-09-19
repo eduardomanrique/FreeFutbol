@@ -99,3 +99,45 @@ test("medium reception works without input and turns a stationary receiver", () 
   assert.equal(m.lastReception.kind, "medium");
   m.physics.dispose();
 });
+
+test("owned ball requires close current distance, while free ball keeps full predictive reach", () => {
+  const challenger = { ...p, id: 20, team: 1 };
+  for (const distance of [0.71, 0.85, 1.2, 2.1]) {
+    const b = { ...ball(distance, 0, -8), owner: 9, lastTeam: 0 };
+    assert.equal(receptionOpportunity(challenger, b), null);
+    assert.ok(receptionOpportunity(challenger, { ...b, owner: null }));
+  }
+  const close = receptionOpportunity(challenger, {
+    ...ball(0.6),
+    owner: 9,
+    lastTeam: 0,
+  });
+  assert.equal(close.time, 0);
+  assert.equal(close.kind, "near");
+  assert.equal(close.maxReach, 0.55);
+});
+
+test("free-ball far attempt is replaced when a rival takes possession", () => {
+  const m = match(),
+    q = m.players[20];
+  Object.assign(q, { x: 0.6, z: 0, vx: 0, vz: 0 });
+  initLocomotion(q);
+  Object.assign(m.players[9], { x: -1.5, z: 0 });
+  initLocomotion(m.players[9]);
+  Object.assign(m.ball, ball(0));
+  q.receptionAttempt = {
+    flight: m.ballFlight,
+    owner: null,
+    kind: "far",
+    success: true,
+    startedAt: 0,
+    lastSeen: 0,
+    landings: 0,
+  };
+  Object.assign(m.ball, { owner: 9, lastTeam: 0 });
+  m.tryAutomaticReception({}, 1 / 120);
+  assert.equal(q.receptionAttempt.kind, "near");
+  assert.equal(q.receptionAttempt.owner, 9);
+  assert.equal(q.reach.maxReach, 0.55);
+  m.physics.dispose();
+});

@@ -37,7 +37,7 @@ try {
       if (m.type() === "error") errors.push(m.text());
     });
   }
-  await Promise.all([a, b].map((p) => p.goto("http://localhost:5173/?test")));
+  await Promise.all([a, b].map((p) => p.goto(process.env.DEPLOY_URL || "http://localhost:5173/?test")));
   await Promise.all(
     [a, b].map((p) =>
       p.waitForFunction(() => window.render_game_to_text, { timeout: 60000 }),

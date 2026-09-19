@@ -1,9 +1,9 @@
 services:
   futebol:
     build:
-      context: /opt/futebol/current
+      context: ${FUTEBOL_ROOT:-/opt/futebol/current}
       dockerfile: Dockerfile
-    image: kmworks/futebol:local
+    image: ${FUTEBOL_IMAGE:-kmworks/futebol:local}
     restart: unless-stopped
     read_only: true
     tmpfs:

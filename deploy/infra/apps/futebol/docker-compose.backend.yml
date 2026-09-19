@@ -5,7 +5,7 @@ services:
     build:
       context: ${FUTEBOL_BACKEND_ROOT:-/opt/futebol/backend-current}
       dockerfile: server/Dockerfile
-    image: kmworks/futebol-backend:local
+    image: ${FUTEBOL_BACKEND_IMAGE:-kmworks/futebol-backend:local}
     restart: unless-stopped
     read_only: true
     tmpfs:

@@ -22,3 +22,9 @@ Point `/opt/futebol/current` at a previous release and run the scoped command. I
 ## Backend overlay (prepared, not deployed)
 
 The local project now includes an authoritative Node/Rapier backend. `docker-compose.backend.yml` is an opt-in overlay with a separate build context and a higher-priority `/futebol/api/` route. The existing frontend activation script does not activate this service. See the product documentation `docs/backend.md` for packaging, configuration, protocol compatibility and rollout requirements. Applying the overlay requires an explicit deployment request.
+
+## Joint frontend/backend rollout
+
+`deploy/activate-stack.sh <frontend-id> <backend-id>` extracts both uploaded `/tmp/futebol-*.tar.gz` archives, checks SHA256 manifests, backs up the current descriptors and release links, builds both immutable release images and updates only futebol/futebol-backend. Requires administrative write access to `/opt/futebol` and `/opt/kmworks-infra/apps/futebol`. It verifies both container health checks and preserves unrelated container IDs. Never deploy the shared stack with `down`.
+
+For rollback, restore the saved app descriptors/root registration and previous release links from `/opt/futebol/deploy-backups/stack-<frontend-id>`, then deploy only these services with the previous immutable images. If rolling back the first backend deployment, stop/remove only futebol-backend. Backend replacement ends its in-memory matches.

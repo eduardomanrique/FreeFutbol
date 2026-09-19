@@ -26,7 +26,14 @@ try {
     s.render = () => {};
   });
   const results = [];
-  for (const name of ["behind", "side", "front", "escape", "pass"]) {
+  for (const name of [
+    "behind",
+    "side",
+    "front",
+    "escape",
+    "pass",
+    "forward-pass",
+  ]) {
     await page.evaluate((name) => {
       const { match: m } = window.__test;
       m.start();
@@ -42,15 +49,29 @@ try {
         q = m.players[20];
       Object.assign(p, { x: 0, z: 0, keeper: false });
       Object.assign(q, {
-        x: name === "behind" || name === "pass" ? -1 : name === "side" ? 0 : 1,
+        x:
+          name === "forward-pass"
+            ? -0.6
+            : name === "behind" || name === "pass"
+              ? -1
+              : name === "side"
+                ? 0
+                : 1,
         z: name === "side" ? 1 : 0,
         keeper: false,
       });
       window.gait.initLocomotion(p);
       window.gait.initLocomotion(q);
-      Object.assign(m.players[10], { x: 0, z: -12 });
+      Object.assign(m.players[10], {
+        x: name === "forward-pass" ? 12 : 0,
+        z: name === "forward-pass" ? 0 : -12,
+      });
       window.gait.initLocomotion(m.players[10]);
-      Object.assign(m.ball, { x: 0.6, z: 0, owner: 9 });
+      Object.assign(m.ball, {
+        x: name === "forward-pass" ? 0.2 : 0.6,
+        z: 0,
+        owner: 9,
+      });
       m.mode = "paused";
       window.duelMetrics = {
         owner: 9,
@@ -69,6 +90,10 @@ try {
             d = window.duelMetrics;
           m.mode = "playing";
           for (; d.frame < end; d.frame++) {
+            if (name === "forward-pass" && d.frame === 0)
+              m.beginAction("pass", { x: 1 });
+            if (name === "forward-pass" && d.frame === 10)
+              m.releaseAction(0.26);
             if (name === "pass" && d.frame === 60)
               m.beginAction("pass", { z: -1 });
             if (name === "pass" && d.frame === 95) m.releaseAction(0.25);
@@ -110,23 +135,34 @@ try {
         { name, end },
       );
       await page.screenshot({ path: `output/shielding/${name}-${end}.png` });
+      if (name === "forward-pass" && end === 60) {
+        assert.ok(
+          r.pass && r.ball.x > 2,
+          "forward pass must escape the close rear marker",
+        );
+        assert.ok(
+          !r.flips.some((f) => f.to === 20),
+          "rear marker must not receive through the passer",
+        );
+      }
       if (end === 360) {
         results.push(r);
         fs.writeFileSync(
           "output/shielding/results.json",
           JSON.stringify({ results, errors }, null, 2),
         );
-        assert.ok(
-          r.touches.some((t) => t.kind === "shield"),
-          name,
-        );
+        if (name !== "forward-pass")
+          assert.ok(
+            r.touches.some((t) => t.kind === "shield"),
+            name,
+          );
         for (let i = 1; i < r.flips.length; i++)
           if (r.flips[i - 1].to !== null && r.flips[i].to !== null)
             assert.ok(r.flips[i].time - r.flips[i - 1].time >= 0.64, name);
         if (name === "escape") {
           assert.equal(r.owner, 9);
           assert.ok(r.p.z < -8);
-        } else if (name === "pass")
+        } else if (name === "pass" || name === "forward-pass")
           assert.ok(r.pass, "pass must launch under pressure");
         else {
           assert.equal(r.owner, 9, name);

@@ -16,6 +16,16 @@ Layout alternativo: A passe rasteiro, B passe alto, X chute ao gol, Y passe em p
 
 Teclado escolhido na implementação: WASD/setas mover, Shift correr, J passe rasteiro, L alto, I profundidade, Espaço gol, Q trocar, K desarme, Esc pausa, F tela cheia. B/X sem posse mantêm carrinho/desarme no controle.
 
+## Celular — usuário (19/09)
+
+Revisão do usuário: a partida deve ficar **horizontal**, sem layout de partida vertical. Simplificar controles touch e correr ao puxar mais o analógico. Colocado não deve existir no celular, nem exigir combinações entre botões de ação.
+
+Implementação: detectar ponteiro coarse/capacidade touch; analógico proporcional com zona morta de12%, corrida a90% da amplitude útil e desligamento abaixo de78% (histerese), cinco botões (Passe, Alto, Lançar, Chute, Trocar). Chute/Alto sem bola executam desarme/carrinho. Proteger/Colocado ficam somente no controle físico. Soltar executa; cancelar toque ou abrir menu cancela carga e movimento/corrida. Os mesmos comandos alimentam partida local e cliente online.
+
+Câmera de partida20% mais próxima em dispositivos touch, preservando ângulo, acompanhamento e modos Transmissão/Tática; desktop e menu inicial não recebem esse zoom.
+
+Tela cheia e orientação landscape são solicitadas no início/prontidão e retorno do menu. Sem trava nativa, a interface inteira gira90° quando o aparelho estiver vertical, corrigindo toque e câmera. O menu permite tentar tela cheia novamente. Manifest fullscreen/landscape e metadados de web app permitem ao navegador abrir a experiência pela Tela de Início, sem promessa de instalação automática/offline ou de esconder barras quando o navegador não autoriza. Detalhes e limites de validação em [README](../README.md#celular).
+
 ## Movimento — usuário
 
 Aceleração progressiva: início com esforço e inclinação à frente, seguido de aumento da amplitude até a velocidade de corrida. Andar e correr devem ter passadas distintas; andar abre menos as pernas. Cadência deve ser perceptível e mais rápida que nas primeiras versões. Preparação de um chute forte alonga a passada e reduz sua frequência. Apoios devem permanecer plantados enquanto suportam peso. Choques devem afetar movimento e equilíbrio.
@@ -38,11 +48,11 @@ Calibração escolhida: intervalo desejado de0,42–0,80s conforme velocidade, m
 
 ## Domínio — usuário
 
-Sempre tentar dominar uma bola alcançável, sem precisar apertar botão nem apontar o direcional para ela. Parado ou andando, virar o corpo para recebê-la. Alcance médio estica uma perna mantendo apoio; longo precisa de passada/aproximação. Sair do alcance interrompe a possibilidade de domínio; comando para afastar-se não deve ser substituído por perseguição automática.
+Sempre tentar dominar uma bola livre alcançável, sem precisar apertar botão nem apontar o direcional para ela. Parado ou andando, virar o corpo para recebê-la. Alcance médio estica uma perna mantendo apoio; longo precisa de passada/aproximação. Sair do alcance interrompe a possibilidade de domínio; comando para afastar-se não deve ser substituído por perseguição automática.
 
 Probabilidades mantidas do pedido anterior: corpo99,9%, perto98%, médio95%, longe90%. A regra antiga que exigia direcional para médio/longo foi substituída. “Sempre tentar” significa tentativa automática; não substitui esses percentuais por100%.
 
-Implementação: faixas medidas do centro do jogador: corpo0,48m, perto0,85m, médio1,30m, longo2,25m. Antecipar trajetória por até1/3s; não puxar a bola à distância. Médio/longo precisam de contato próximo do pé para concluir. Virar automaticamente abaixo de3,5m/s. Pequena aproximação automática quando necessária, mantendo comando de afastamento. Uma amostra aleatória por tentativa física; após uma falha, permitir outra somente depois de0,45s e de um novo apoio do pé. Nunca sortear a cada frame. Percepção continua ativa durante a recuperação do gesto anterior; previsão considera também o deslocamento do receptor. Goleiros têm regras separadas de defesa. Domínio alto no corpo é assistido; não existe ainda animação dedicada completa de peito/cabeça.
+Implementação para bola livre: faixas medidas do centro do jogador: corpo0,48m, perto0,85m, médio1,30m, longo2,25m. Antecipar trajetória por até1/3s; não puxar a bola à distância. Médio/longo precisam de contato próximo do pé para concluir. Virar automaticamente abaixo de3,5m/s. Pequena aproximação automática quando necessária, mantendo comando de afastamento. Uma amostra aleatória por tentativa física; após uma falha, permitir outra somente depois de0,45s e de um novo apoio do pé. Nunca sortear a cada frame. Percepção continua ativa durante a recuperação do gesto anterior; previsão considera também o deslocamento do receptor. Goleiros têm regras separadas de defesa. Domínio alto no corpo é assistido; não existe ainda animação dedicada completa de peito/cabeça.
 
 ## Preparação e instante do passe/chute — usuário
 
@@ -89,6 +99,10 @@ Ao detectar marcação próxima, o portador deve colocar a bola no lado oposto a
 Calibração de implementação: ameaça mais próxima até2,1m; alvo de proteção cerca de0,78m no lado livre, combinado com deslocamento escolhido. Contornar pressão frontal em vez de insistir diretamente contra o defensor. Preparação de passe/chute conserva sua mira e gesto, sem ser substituída pelo toque de proteção.
 
 Recepção de bola livre continua automática. Para tomar bola conduzida, exigir contato do pé, acesso sem atravessar o corpo do portador,0,22s de preparação da disputa e vantagem de proximidade de0,12m sobre o portador. Quem perde a posse recupera-se por0,65s antes de nova recepção/desarme. Isso evita alternância a cada frame; não bloqueia outros defensores nem torna a bola imune quando exposta. Desarme explícito também respeita o bloqueio do corpo e a recuperação. Os tempos e distâncias são calibrações do jogo.
+
+### Disputa com portador — revisão do usuário (19/09)
+
+A recepção ampla de bola livre não pode ser usada para tirar a bola de alguém apenas pela proximidade, especialmente através do corpo/de costas. Com dono adversário, a tentativa usa distância atual até0,70m, altura até0,50m e alcance de perna limitado a0,55m; não prevê posição futura nem inicia a aproximação longa de recepção. Exige contato pé-bola abaixo de0,22m, disputa contínua por0,22s e vantagem de proximidade de0,12m sobre o portador. A checagem do segmento adversário→bola bloqueia passagem a menos de0,50m do centro do portador, ampliada de0,38m. Essa barreira vale também para desarme explícito; o limite de0,70m é só da recepção automática. Tentativas são reiniciadas quando muda o dono, para não herdar alcance/categoria de bola livre. Bola livre mantém as faixas anteriores; bola exposta continua disputável. Parâmetros escolhidos na implementação, não medidas biomecânicas. Validação:107 testes passam e navegador cobre pressão atrás/lado/frente, fuga e passe sob pressão.
 
 ## Drible em modo lento e goleiro — usuário (18/09)
 
@@ -137,3 +151,7 @@ A barra enche em0,315s (35% dos0,9s anteriores). O limite de segurar demais cont
 ## Multiplayer autoritativo — 19/09
 
 Cada participante controla um time; o servidor executa movimento, IA, bola, contatos, carga, gols e relógio. Clientes enviam intenções, sem autoridade sobre posição ou resultado. Os estados por time são independentes. O modo offline mantém as regras anteriores. No online, abrir o menu/perder foco cancela a carga e neutraliza comandos, mas não pausa a partida. A perda de socket interrompe a partida no servidor, com prazo de retomada. Interpolação visual e limites atuais: [backend.md](backend.md). Nenhuma publicação foi realizada neste trabalho.
+
+### Passe para frente com marcador nas costas — revisão (19/09)
+
+O bloqueio corporal permanece relevante depois de soltar a bola: durante0,35s após o contato do passe/chute, a recepção automática considera o passador como barreira mesmo com bola livre. Só impede caminho bloqueado pelo corpo; defensor na frente pode interceptar. Quando a bola está dentro da margem corporal de0,50m, a barreira inclui a extremidade do segmento para impedir coleta por trás/debaixo dos pés, mas preserva acesso frontal. Não desativa colisões físicas nem garante recepção pelo companheiro. Regra aplicada tanto ao planejamento da aproximação quanto à transferência de posse. Testes agora acompanham a bola por0,3s depois do contato: nove posições de bola/marcador, mais cenário visual de passe para frente.109 testes e seis cenários de navegador passam.

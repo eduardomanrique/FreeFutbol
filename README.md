@@ -31,11 +31,31 @@ O servidor executa física e regras a 120 Hz em workers; clientes enviam comando
 - **Esc:** pausar; configurações e controles também estão nesse menu.
 - **F:** tela cheia.
 
-Interface adaptável a telas pequenas. Suporta teclado e controles pela Gamepad API; não possui controles por toque.
+Interface adaptável a telas pequenas, com teclado, Gamepad API e controles multitoque em dispositivos touch.
+
+### Celular
+
+A partida permanece em **horizontal**, com placar, nome/fôlego e radar compactos. Ao entrar em campo ou voltar do menu, solicita tela cheia e trava de orientação landscape. No online, a tentativa também acontece ao tocar **Estou pronto** ou **Iniciar partida**, pois o navegador exige um gesto. Se a trava nativa for recusada e o aparelho estiver vertical, a interface gira para manter o jogo horizontal, com coordenadas de toque corrigidas.
+
+O navegador pode recusar tela cheia; não é possível ocultar suas barras por CSS. O menu da partida oferece **Tela cheia** para tentar novamente. Há manifest com `display: fullscreen`, `orientation: landscape` e metadados de web app para abrir pelo ícone da Tela de Início no iPhone. Isso não instala o jogo automaticamente nem adiciona cache offline; o comportamento de instalação/tela cheia depende do navegador.
+
+São **cinco botões de ação**, todos transparentes, além do analógico e pausa:
+
+- Analógico esquerdo: arraste para mover/mirar; a amplitude controla a velocidade. Na borda, corre automaticamente (90% da amplitude útil); recue abaixo de78% para parar de correr. O anel acende e mostra CORRENDO. Soltar/cancelar limpa a corrida.
+- **Passe / Alto / Lançar / Chute**: segure para carregar e solte para executar.
+- Sem posse, **Chute** desarma e **Alto** dá carrinho.
+- **Trocar** muda de jogador.
+- **Ⅱ** abre o menu. Pausa, perda de foco, mudança de tamanho e interrupção de toque limpam comandos, cancelando a carga sem disparar.
+
+Não há botões Correr, Proteger ou Colocado no touch, nem combinação entre botões de ação. Proteger e Colocado continuam disponíveis pelo controle físico. Mover/mirar com o analógico enquanto usa uma ação funciona com dois dedos.
+
+Durante a partida, a câmera fica20% mais perto no celular (jogadores aproximadamente25% maiores), mantendo o ângulo e os modos Transmissão/Tática. Desktop e câmera do menu inicial mantêm as distâncias anteriores. A câmera usa as dimensões efetivas da interface, inclusive quando girada. O menu inicial permite rolagem tanto em retrato quanto em paisagem. Validação automatizada em Chromium com emulação touch (320×568, 390×844 e 844×390), gestos multitoque, ações com contato na bola, corrida por amplitude e fallback sem fullscreen. Safari/iPhone e Android físicos ainda precisam de validação; não há medição de desempenho em hardware mobile.
 
 ### Controle Xbox / 8BitDo
 
 Analógico esquerdo movimenta com velocidade proporcional e zona morta de 15%; RT corre, A passa, X carrega/solta o chute, B faz passe alto, Y faz passe em profundidade, LB troca jogador, Menu pausa. Sem bola, X desarma e B executa carrinho; LT marca/protege e RB modifica o chute para colocado. Nos menus, direcional/analógico navega, A confirma e B volta; esquerda/direita altera seletores. O teclado continua disponível.
+
+**Proteger (LT)** reduz a velocidade e ativa controle próximo da bola; sem posse, permite movimentação mais lenta de marcação. Parte da proteção corporal contra adversários próximos já é automática. **Colocado (RB + X)** só modifica um chute: mantenha RB pressionado quando soltar X. RB sozinho não chuta. A implementação reduz a velocidade do chute em14%, melhora o índice de precisão em até0,07 (limitado a0,99) e adiciona curva; não garante gol. Os outros botões de ação não exigem combinações. Correr e marcar em movimento usam RT/LT junto do analógico.
 
 Conecte o controle, abra o jogo e pressione um botão com a página em foco. Um indicador mostra a detecção. Ao conectar, reconectar ou sair de um menu, solte botões e centralize o analógico antes do próximo comando. Desconectar durante a partida pausa o jogo e cancela o chute carregado.
 
@@ -45,9 +65,11 @@ Passes e chutes carregam ao segurar e são agendados ao soltar; a bola sai no co
 
 A bola permanece dinâmica durante a condução. O portador dá impulsos em contatos discretos dos pés; entre eles a bola conserva inércia e sofre atrito. Resistência explícita de5,8m/s² mais termo dependente da velocidade. No teste Rapier isolado, bolas a5/10m/s param em1,63/6,84m. Chutes fortes ainda podem sair antes de parar; esses valores são calibração de gameplay.
 
-Domínio automático em todas as faixas enquanto alcançável: corpo99,9%, perto98%, médio95%, longo90%. Parado/andando, o jogador se vira para a bola; médio estende uma perna e longo aproxima com passada. Não exige direcional, mas respeita comando para sair do alcance. Chances por tentativa, sem novo sorteio a cada quadro. Goleiros mantêm regras separadas.
+Domínio automático de **bola livre** em todas as faixas enquanto alcançável: corpo99,9%, perto98%, médio95%, longo90%. Parado/andando, o jogador se vira para a bola; médio estende uma perna e longo aproxima com passada. Não exige direcional, mas respeita comando para sair do alcance. Chances por tentativa, sem novo sorteio a cada quadro. Goleiros mantêm regras separadas.
 
 As [regras fixas da mecânica](docs/regras-da-mecanica.md) distinguem requisitos do usuário, calibrações e limitações. São a referência atual; não fazer deploy sem pedido explícito.
+
+Quando a bola já tem dono, o alcance automático do adversário é menor: até0,70m da bola no instante atual, sem previsão/aproximação longa, bola abaixo de0,50m e contato do pé a menos de0,22m. Mantém disputa por0,22s e exige estar mais perto da bola que o portador. O corpo bloqueia a tentativa através de um corredor de0,50m, inclusive por trás/diagonal. Bola exposta ainda pode ser roubada; desarme por botão continua sendo uma ação separada. Após um passe/chute, o corpo do passador continua bloqueando a recepção através dele por0,35s; isso também cobre bola junto aos pés com marcador atrás, sem impedir interceptação pela frente. Validado por109 testes e cenários de navegador que acompanham o passe para frente após o contato, além de proteção e fuga.
 
 O ritmo dos jogadores foi aumentado: deslocamento 15% mais rápido, propulsão e gestos mais rápidos, preservando aceleração gradual e distinção entre caminhada, corrida e sprint.
 

@@ -1,0 +1,11 @@
+{
+  "name": "CAMPO 26",
+  "short_name": "CAMPO",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#13241e",
+  "theme_color": "#13241e"
+}

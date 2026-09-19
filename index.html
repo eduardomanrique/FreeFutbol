@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="data:," />
-    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1.0,viewport-fit=cover"
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="theme-color" content="#111b19" />
     <title>CAMPO — O jogo começa aqui</title>
   </head>
@@ -201,6 +211,25 @@
           <span><kbd>W A S D</kbd> Mover</span><span><kbd>J</kbd> Passe</span
           ><span><kbd>ESPAÇO</kbd> Chute</span><span><kbd>Q</kbd> Trocar</span
           ><span><kbd>SHIFT</kbd> Correr</span>
+        </div>
+      </div>
+      <div id="touch-controls" aria-label="Controles por toque" hidden>
+        <div
+          class="touch-stick"
+          data-touch="move"
+          role="group"
+          aria-label="Analógico: arraste para mover, puxe até a borda para correr"
+        >
+          <i></i>
+        </div>
+        <div class="touch-actions">
+          <button data-touch="switch">Trocar</button>
+          <button data-touch="through">Lançar</button>
+          <button data-touch="lob">Alto<small>/ carrinho</small></button>
+          <button data-touch="pass">Passe</button>
+          <button data-touch="shoot" class="touch-shoot">
+            Chute<small>/ desarme</small>
+          </button>
         </div>
       </div>
       <button

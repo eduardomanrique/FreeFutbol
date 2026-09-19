@@ -1169,3 +1169,297 @@ body.online-mode:not(.playing) #performance {
     display: none;
   }
 }
+
+/* Mobile match uses the whole visual viewport, including standalone Safari. */
+body.mobile #app {
+  height: 100dvh;
+}
+body.mobile.playing {
+  overscroll-behavior: none;
+}
+body.mobile.playing #app {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+body.mobile.playing header,
+body.mobile.playing .quick-controls,
+body.mobile.playing #controller-status,
+body.mobile.playing #performance {
+  display: none;
+}
+body.mobile.playing .scoreboard {
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  height: 36px;
+  font-size: 10px;
+}
+body.mobile.playing .team-name {
+  padding: 0 9px;
+}
+body.mobile.playing #score {
+  font-size: 19px;
+  padding: 0 10px;
+  gap: 8px;
+}
+body.mobile.playing #match-clock {
+  font-size: 10px;
+  padding: 0 9px;
+}
+body.mobile.playing #match-clock.unlimited {
+  font-size: 8px;
+}
+body.mobile.playing .period {
+  padding-right: 8px;
+  font-size: 8px;
+}
+body.mobile.playing .pause-button {
+  background: transparent;
+  text-shadow: 0 1px 3px #000;
+  top: max(6px, env(safe-area-inset-top));
+  right: 8px;
+  width: 44px;
+  height: 44px;
+}
+body.mobile.playing .player-panel {
+  top: calc(max(10px, env(safe-area-inset-top)) + 44px);
+  bottom: auto;
+  left: 10px;
+  min-width: 0;
+  padding: 6px 9px;
+  gap: 8px;
+}
+body.mobile.playing .player-number {
+  font-size: 24px;
+}
+body.mobile.playing .player-panel small {
+  display: none;
+}
+body.mobile.playing .player-panel strong {
+  font-size: 11px;
+  margin: 0 0 5px;
+}
+body.mobile.playing .stamina {
+  width: 90px;
+}
+body.mobile.playing .possession {
+  display: none;
+}
+body.mobile.playing #radar {
+  top: calc(max(10px, env(safe-area-inset-top)) + 48px);
+  right: 10px;
+  left: auto;
+  bottom: auto;
+  width: 94px;
+  height: 61px;
+  transform: none;
+  opacity: 0.75;
+}
+body.mobile.playing #event-toast {
+  top: 135px;
+  max-width: 90%;
+  font-size: 10px;
+  padding: 8px 12px;
+  white-space: normal;
+  text-align: center;
+}
+body.mobile.playing .power-wrap {
+  left: 12px;
+  bottom: calc(158px + env(safe-area-inset-bottom));
+  font-size: 9px;
+}
+body.mobile.playing .power-wrap > div {
+  width: 130px;
+}
+body.mobile.playing #network-banner {
+  position: absolute;
+  top: 114px;
+  font-size: 9px;
+  padding: 3px 8px;
+}
+#touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+#touch-controls [data-touch] {
+  pointer-events: auto;
+  touch-action: none;
+}
+.touch-stick {
+  position: absolute;
+  left: 14px;
+  bottom: calc(32px + env(safe-area-inset-bottom));
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid #e5ffd76b;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 1px 3px #0003;
+}
+.touch-stick i {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #efffe8b3;
+  pointer-events: none;
+}
+.touch-actions {
+  position: absolute;
+  right: 10px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  gap: 7px;
+}
+.touch-actions button {
+  width: 52px;
+  height: 52px;
+  border: 1px solid #e1efca66;
+  border-radius: 50%;
+  background: transparent;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 6px #0008;
+  color: #f3ffe6;
+  font:
+    500 10px "DM Sans",
+    sans-serif;
+  padding: 0;
+}
+.touch-actions small {
+  display: block;
+  font-size: 6px;
+  margin-top: 2px;
+}
+.touch-actions .touch-shoot {
+  background: transparent;
+  border-color: #c4f58a;
+  color: #e5ffc3;
+}
+#touch-controls .held {
+  background-color: transparent;
+  color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #c4f58a99;
+}
+body.mobile .modal-card {
+  max-width: 92%;
+  max-height: 90%;
+  padding: 24px;
+  touch-action: pan-y;
+}
+body.mobile .modal-card h2 {
+  font-size: 30px;
+}
+body.mobile.landscape-fallback #app {
+  inset: auto;
+  top: 0;
+  left: 100%;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: rotate(90deg);
+}
+/* Keep the lobby reachable on short phones; gameplay itself never scrolls. */
+@media (max-width: 620px) {
+  body.mobile:not(.playing) #home {
+    position: absolute;
+    left: 0;
+    right: 0;
+    overflow-y: auto;
+    top: 67px;
+    bottom: 0;
+    padding: 14px 6% 35px;
+  }
+  body.mobile:not(.playing) .hero,
+  body.mobile:not(.playing) .home-footer,
+  body.mobile:not(.playing) #controller-status {
+    display: none;
+  }
+  body.mobile:not(.playing) .match-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-height: none;
+    margin: 0 auto;
+  }
+}
+
+.touch-stick::after {
+  content: "PUXE PARA CORRER";
+  position: absolute;
+  bottom: -16px;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+.touch-stick.sprinting {
+  border-color: #c4f58a;
+  box-shadow: 0 0 0 3px #c4f58a66;
+}
+.touch-stick.sprinting::after {
+  content: "CORRENDO";
+  color: #c4f58a;
+}
+body.mobile.playing #event-toast {
+  top: 54px;
+  max-width: 45%;
+}
+body.mobile.playing #network-banner {
+  top: 96px;
+  max-width: 45%;
+}
+/* Safe insets are relative to the physical screen; use conservative spacing
+   after CSS rotation so the logical landscape controls clear the notch. */
+body.mobile.playing {
+  --touch-edge: max(
+    14px,
+    env(safe-area-inset-left),
+    env(safe-area-inset-right)
+  );
+}
+body.mobile.landscape-fallback {
+  --touch-edge: max(
+    14px,
+    env(safe-area-inset-top),
+    env(safe-area-inset-bottom)
+  );
+}
+body.mobile.playing .touch-stick,
+body.mobile.playing .scoreboard,
+body.mobile.playing .player-panel {
+  left: var(--touch-edge);
+}
+body.mobile.playing .touch-actions,
+body.mobile.playing #radar,
+body.mobile.playing .pause-button {
+  right: var(--touch-edge);
+}
+/* The start menu also scrolls when the phone is already horizontal. */
+body.mobile:not(.playing) #home {
+  position: absolute;
+  inset: 67px 0 0;
+  overflow-y: auto;
+  padding: 14px 6% 35px;
+}
+body.mobile:not(.playing) .hero,
+body.mobile:not(.playing) .home-footer,
+body.mobile:not(.playing) .scene-caption,
+body.mobile:not(.playing) #controller-status {
+  display: none;
+}
+body.mobile:not(.playing) .match-card {
+  position: relative;
+  inset: auto;
+  width: min(100%, 420px);
+  max-height: none;
+  margin: 0 auto;
+}

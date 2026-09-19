@@ -20,6 +20,7 @@ import {
 import { stepBallMotion } from "./ball-physics.js";
 import {
   RECEPTION,
+  POSSESSION_CHALLENGE,
   receptionOpportunity,
   receptionRoll,
   receptionContact,
@@ -747,7 +748,8 @@ export class Match {
       const control = this.controls[p.team];
       p.kick = Math.max(0, p.kick - dt * 1.15);
       p.reachCooldown = Math.max(0, (p.reachCooldown || 0) - dt);
-      p.reach = canContestBall(p, owner, b, this.elapsed)
+      const screen = owner ?? this.recentKickScreen();
+      p.reach = canContestBall(p, screen, b, this.elapsed)
         ? planBallReach(p, b)
         : null;
       p.touchCooldown = Math.max(0, (p.touchCooldown || 0) - dt);
@@ -1098,6 +1100,13 @@ export class Match {
       this.announce(caught ? "GOLEIRO SEGUROU" : "DEFESA DO GOLEIRO", 1.4);
     }
   }
+  recentKickScreen() {
+    // Releasing a pass ends possession, not the physical barrier of the passer.
+    // Only block a receiver whose route to the ball crosses that body.
+    return this.elapsed - this.kickReleasedAt < 0.35
+      ? (this.players[this.lastKicker] ?? null)
+      : null;
+  }
   tryAutomaticReception(input, dt) {
     const b = this.ball;
     const currentOwner = b.owner;
@@ -1112,7 +1121,9 @@ export class Match {
       if (
         !canContestBall(
           p,
-          currentOwner === null ? null : this.players[currentOwner],
+          currentOwner === null
+            ? this.recentKickScreen()
+            : this.players[currentOwner],
           b,
           this.elapsed,
         )
@@ -1137,6 +1148,7 @@ export class Match {
       if (
         !p.receptionAttempt ||
         p.receptionAttempt.flight !== this.ballFlight ||
+        p.receptionAttempt.owner !== currentOwner ||
         (!p.receptionAttempt.success &&
           this.elapsed - p.receptionAttempt.startedAt > 0.45 &&
           p.locomotion.feet.reduce((n, f) => n + f.landings, 0) >
@@ -1144,6 +1156,7 @@ export class Match {
       ) {
         p.receptionAttempt = {
           flight: this.ballFlight,
+          owner: currentOwner,
           kind: opportunity.kind,
           success: receptionRoll(opportunity, this.random),
           lastSeen: this.elapsed,
@@ -1157,7 +1170,7 @@ export class Match {
       p.reach = {
         ...opportunity,
         kind: attempt.kind,
-        maxReach: RECEPTION[attempt.kind].reach,
+        maxReach: Math.min(opportunity.maxReach, RECEPTION[attempt.kind].reach),
       };
       if (currentOwner !== null && p.challenge?.owner !== currentOwner)
         p.challenge = { owner: currentOwner, since: this.elapsed };
@@ -1170,7 +1183,8 @@ export class Match {
               this.players[currentOwner].z - b.z,
             ) &&
           p.locomotion.feet.some(
-            (f) => footBallDistance(f, b, f.previous) < 0.29,
+            (f) =>
+              footBallDistance(f, b, f.previous) < POSSESSION_CHALLENGE.contact,
           ));
       if (rivalContact && receptionContact(p, b, attempt.kind, dt))
         candidates.push({ p, attempt, distance: length(p.x - b.x, p.z - b.z) });

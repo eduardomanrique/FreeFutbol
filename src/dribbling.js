@@ -262,8 +262,13 @@ export function canContestBall(challenger, owner, ball, time) {
     Math.max(0.0001, dx * dx + dz * dz);
   return !(
     t > 0 &&
-    t < 1 &&
-    length(challenger.x + dx * t - owner.x, challenger.z + dz * t - owner.z) <
-      0.38
+    (t < 1 ||
+      (challenger.x - owner.x) * (owner.dx || 0) +
+        (challenger.z - owner.z) * (owner.dz || 0) <
+        0) &&
+    length(
+      challenger.x + dx * Math.min(1, t) - owner.x,
+      challenger.z + dz * Math.min(1, t) - owner.z,
+    ) < 0.5
   );
 }

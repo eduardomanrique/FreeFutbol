@@ -1,5 +1,8 @@
 {
   "release": "20260918-4f411735cc91",
-  "archive": "/tmp/futebol-20260918-4f411735cc91.tar.gz",
-  "url": "https://kmworks.dev/futebol/"
+  "url": "https://kmworks.dev/futebol/",
+  "prepared": {
+    "frontend": "20260919-852a120ee1cc",
+    "backend": "20260919-e3b603426115"
+  }
 }
