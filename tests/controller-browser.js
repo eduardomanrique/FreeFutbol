@@ -81,28 +81,31 @@ try {
   assert.ok((await state()).players[9].stamina < 0.99);
   await update([]);
   await reset();
-  await update([0], [0,0], 180);
-  assert.equal((await state()).charging,true);
-  assert.equal((await state()).lastPass,null);
-  await update([], [0,0], 450);
+  await update([0], [0, 0], 180);
+  assert.equal((await state()).charging, true);
+  assert.equal((await state()).lastPass, null);
+  await update([], [0, 0], 450);
   assert.equal((await state()).lastAction, "pass");
   const recipient = (await state()).selected;
   await update([0]);
   assert.equal((await state()).selected, recipient);
   await update([]);
   await reset();
-  await update([1], [0,0], 180);
-  assert.equal((await state()).lastPass,null);
-  await update([], [0,0], 450);
+  await update([1], [0, 0], 180);
+  assert.equal((await state()).lastPass, null);
+  await update([], [0, 0], 450);
   assert.equal((await state()).lastAction, "lob");
   await update([]);
   await reset();
   // This assertion tests release, not a subsequent AI interception. Keep the
   // shot lane clear so the opponent cannot legitimately own it 450 ms later.
   await page.evaluate(() => {
-    for (const p of window.__test.match.players) if (p.id !== 9) {
-      p.z = 25; p.homeZ = 25; p.vx = p.vz = 0;
-    }
+    for (const p of window.__test.match.players)
+      if (p.id !== 9) {
+        p.z = 25;
+        p.homeZ = 25;
+        p.vx = p.vz = 0;
+      }
   });
   await update([2], [0, 0], 450);
   assert.ok((await state()).charge > 0.45);
@@ -114,6 +117,9 @@ try {
   await update([4]);
   assert.equal((await state()).lastAction, "switch");
   await update([]);
+  await page.evaluate(() => {
+    window.__test.match.ball.owner = 20;
+  });
   await update([2]);
   assert.equal((await state()).lastAction, "tackle");
   await update([]);
@@ -212,7 +218,7 @@ try {
   const shot = (await state()).lastShot;
   assert.ok(shot.power > 0.55);
   assert.ok(
-    Math.abs(shot.speed - (9 + 36 * Math.pow(shot.power, 1.1))) < 0.001,
+    Math.abs(shot.speed - (9 + 36 * Math.pow(shot.power, 0.75)) * 0.6) < 0.001,
   );
   await page.keyboard.down("ArrowRight");
   await page.evaluate(() => window.advanceTime(100));

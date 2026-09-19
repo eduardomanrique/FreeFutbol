@@ -103,9 +103,9 @@ test("close control turns toward new input sooner using shorter grounded steps",
 test("good close chances beat the keeper while weak central shots remain defendable", async () => {
   const { chance } = await import("./scoring-balance.js");
   let goals = 0;
-  for (const aim of [-0.75, 0.75])
+  for (const aim of [-0.9, 0.9])
     for (const random of [0.1, 0.5, 0.9])
-      goals += Number(chance(12, 0.65, aim, random).goal);
+      goals += Number(chance(12, 1, aim, random).goal);
   assert.ok(goals >= 4, `${goals}/6 well-placed close shots converted`);
   assert.ok(chance(12, 0.35, 0).save);
 });

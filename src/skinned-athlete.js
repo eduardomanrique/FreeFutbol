@@ -263,10 +263,53 @@ export function animateSkinnedAthlete(rig, p, match) {
       offset = i * 7;
     bone.position.fromArray(motion.pose, offset);
     bone.quaternion.fromArray(motion.pose, offset + 3);
+    if (
+      motion.action === "locomotion" &&
+      !p.ballAction &&
+      !p.recovery &&
+      /^(upperarm|lowerarm)_/.test(bone.name)
+    ) {
+      const rest = new T.Quaternion().fromArray(motion.idlePose, offset + 3);
+      bone.quaternion.slerp(rest, (motion.relaxedBlend || 0) * 0.5);
+    }
   }
   if (p.keeper && p.goalkeeping) {
     poseGoalkeeper(rig, p);
     return;
+  }
+  // Support-driven ginga and velocity-dependent strike loading. World-space
+  // planted feet below remain fixed and are solved by the existing leg IK.
+  const expression = l.expression || {};
+  const right = new T.Vector3(Math.cos(l.heading), 0, -Math.sin(l.heading));
+  const forward = new T.Vector3(Math.sin(l.heading), 0, Math.cos(l.heading));
+  rig.root.position.addScaledVector(right, expression.shift || 0);
+  rig.root.position.addScaledVector(forward, -(expression.hipBack || 0));
+  rig.root.rotateX(-(expression.strikeLean || 0) * 0.45);
+  rig.root.updateMatrixWorld(true);
+  const worldTurn = (bone, axis, amount) => {
+    if (amount)
+      rotateWorld(bone, new T.Quaternion().setFromAxisAngle(axis, amount));
+  };
+  const up = new T.Vector3(0, 1, 0);
+  worldTurn(rig.pelvis, up, expression.twist || 0);
+  worldTurn(rig.torso, up, -(expression.twist || 0) * 1.65);
+  worldTurn(rig.torso, forward, -(expression.lean || 0));
+  worldTurn(rig.head, up, (expression.twist || 0) * 0.35);
+  // Hinge through hips and spine, not a rigid whole-body tilt.
+  worldTurn(rig.pelvis, right, (expression.fold || 0) * 0.25);
+  worldTurn(rig.torso, right, (expression.fold || 0) * 0.75);
+  worldTurn(rig.head, right, -(expression.fold || 0) * 0.35);
+  worldTurn(rig.torso, right, -(expression.strikeLean || 0) * 0.55);
+  for (const arm of rig.arms) {
+    worldTurn(arm.upper, forward, arm.side * (expression.arms || 0));
+    worldTurn(
+      arm.upper,
+      right,
+      (expression.twist || 0) * arm.side * 0.45 +
+        (expression.strikeArms || 0) *
+          arm.side *
+          ((p.strikePlant?.foot ?? l.strikeFollow?.supportFoot) === 0 ? -1 : 1),
+    );
   }
   // Whole-body launch pitch plus extra torso flexion, fading as acceleration falls.
   rig.root.updateMatrixWorld(true);
@@ -281,7 +324,7 @@ export function animateSkinnedAthlete(rig, p, match) {
   const walkUpright =
     1 -
     0.6 *
-      (motion.walkBlend || 0) *
+      (motion.relaxedBlend || 0) *
       (1 - Math.max(p.sprintLaunch || 0, l.cutBlend || 0));
   rig.torso.rotateX(
     (l.leanX * Math.sin(l.heading) + l.leanZ * Math.cos(l.heading)) *
@@ -340,7 +383,11 @@ export function animateSkinnedAthlete(rig, p, match) {
         0.02 +
         Math.max(0, footPosition.y - 0.02) *
           Math.min(1.2, stride) *
-          (motion.gait === "walk" ? 0.75 : motion.gait === "sprint" ? 1.15 : 1);
+          (motion.gait === "walk"
+            ? 0.6
+            : motion.gait === "sprint"
+              ? 1.15
+              : 0.72);
     }
 
     const physical = l.feet.find((f) => (f.side > 0 ? 0 : 1) === i);
@@ -456,7 +503,8 @@ export function animateSkinnedAthlete(rig, p, match) {
   // Add cut flexion after reach correction, so existing IK compensation does
   // not swallow the crouch. Solve knees with unchanged planted-foot targets.
   pelvisDrop = T.MathUtils.clamp(
-    pelvisDrop + 0.13 * (l.cutBlend || 0),
+    pelvisDrop +
+      Math.min(0.2, 0.13 * (l.cutBlend || 0) + (expression.crouch || 0)),
     0,
     0.42,
   );

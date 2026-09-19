@@ -112,6 +112,8 @@ export class MotionController {
     this.transitionTime = 10;
     this.feature = library.sample(this.clip, this.time, this.pose);
     this.previous.set(this.pose);
+    this.idlePose = new Float32Array(library.stride);
+    library.sample(library.byName.idle, 0, this.idlePose);
     this.lastX = null;
     this.lastZ = null;
     this.action = "locomotion";
@@ -181,23 +183,25 @@ export class MotionController {
       (this.walkBlend || 0) +
       ((this.gait === "walk" ? 1 : 0) - (this.walkBlend || 0)) *
         (1 - Math.exp(-dt * 10));
+    const relaxedTarget =
+      this.gait === "walk"
+        ? 1
+        : this.gait === "jog" && !p.sprintRequested
+          ? 0.7
+          : 0;
+    this.relaxedBlend =
+      (this.relaxedBlend || 0) +
+      (relaxedTarget - (this.relaxedBlend || 0)) * (1 - Math.exp(-dt * 8));
     const forwardAcceleration =
       (p.locomotion?.ax || 0) * Math.sin(p.locomotion?.heading || 0) +
       (p.locomotion?.az || 0) * Math.cos(p.locomotion?.heading || 0);
-    const loadingBack =
-      charge &&
-      speed > 1 &&
-      p.strikePlant &&
-      p.locomotion.feet[p.strikePlant.foot].contact;
-    const leanTarget = loadingBack
-      ? -0.14 * match.charge
-      : clamp(
-          Math.atan2(forwardAcceleration, 9.81) *
-            (0.85 + 0.35 * (p.sprintLaunch || 0)) *
-            (1 - 0.65 * this.walkBlend * (1 - (p.sprintLaunch || 0))),
-          -0.18,
-          0.42 + 0.12 * (p.sprintLaunch || 0),
-        );
+    const leanTarget = clamp(
+      Math.atan2(forwardAcceleration, 9.81) *
+        (0.85 + 0.35 * (p.sprintLaunch || 0)) *
+        (1 - 0.65 * this.relaxedBlend * (1 - (p.sprintLaunch || 0))),
+      p.ballAction ? -0.035 : -0.18,
+      0.42 + 0.12 * (p.sprintLaunch || 0),
+    );
     this.driveLean =
       (this.driveLean || 0) +
       (leanTarget - (this.driveLean || 0)) * (1 - Math.exp(-dt * 9));
@@ -304,6 +308,7 @@ export class MotionController {
       clip: this.clip.name,
       gait: this.gait,
       walkBlend: this.walkBlend,
+      relaxedBlend: this.relaxedBlend,
       strideScale: this.strideScale,
       driveLean: this.driveLean,
       time: this.time,

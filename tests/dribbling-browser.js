@@ -79,7 +79,14 @@ try {
             p = m.players[9],
             metrics = window.dribbleMetrics;
           m.mode = "playing";
-          const limit = phase === "launch" ? 180 : phase === "end" ? 300 : 160;
+          const limit =
+            phase === "launch"
+              ? 180
+              : phase === "end"
+                ? ["cut90", "reverse", "stop"].includes(name)
+                  ? 660
+                  : 300
+                : 160;
           let marked = false;
           for (let i = 0; i < limit; i++) {
             const time = metrics.frames / 120;
@@ -110,7 +117,11 @@ try {
             if (m.lastTouch?.time !== metrics.lastTouch) {
               metrics.lastTouch = m.lastTouch?.time;
               if (m.lastTouch) metrics.touches.push({ ...m.lastTouch });
-              if (phase === "contact") {
+              if (
+                phase === "contact" &&
+                (!["cut90", "reverse"].includes(name) ||
+                  (time > 2.5 && m.lastTouch.kind === "cut"))
+              ) {
                 marked = true;
                 break;
               }
@@ -119,6 +130,21 @@ try {
               metrics.maxD,
               Math.hypot(m.ball.x - p.x, m.ball.z - p.z),
             );
+            if (
+              phase === "end" &&
+              ["cut90", "reverse"].includes(name) &&
+              time > 4.5 &&
+              Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.8 &&
+              (name === "cut90"
+                ? p.vz > 3 && m.ball.vz > 3
+                : p.vx < -3 && m.ball.vx < -3)
+            )
+              break; // Complete recovery before an unopposed sprint leaves the pitch.
+            if (
+              phase === "end" && name === "stop" && time > 3 &&
+              Math.hypot(m.ball.vx, m.ball.vz) < 0.1 &&
+              Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.2
+            ) break;
             if (
               phase === "free-roll" &&
               m.lastTouch &&
@@ -160,8 +186,23 @@ try {
           JSON.stringify(result, null, 2),
         );
         assert.equal(result.owner, 9, name);
+        // At full sprint a direct reversal leaves the ball behind while the
+        // 78kg body brakes; verify bounded separation AND eventual recovery.
         if (name !== "passing-near" && name !== "recover")
-          assert.ok(result.maxD < 2.25, name);
+          assert.ok(
+            result.maxD < (["cut90", "reverse"].includes(name) ? 6 : 2.25),
+            name,
+          );
+        if (["cut90", "reverse"].includes(name)) {
+          assert.ok(
+            result.dribbling.distance < 1.85,
+            `${name}: recovered after braking`,
+          );
+          assert.ok(
+            name === "cut90" ? result.ball.vz > 1 : result.ball.vx < -1,
+            `${name}: exits in requested direction`,
+          );
+        }
         if (name === "stop" || name === "recover")
           assert.ok(Math.hypot(result.ball.vx, result.ball.vz) < 0.1, name);
         results.push(result);

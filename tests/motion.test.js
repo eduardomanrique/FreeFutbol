@@ -86,18 +86,61 @@ test("live match advances search, skeletal inertia and distance; reset recreates
 });
 
 test("slow control keeps authored walking at its top speed, while running uses jog", () => {
-  for(const closeControl of [true,false]) {
-    const m=new Match();m.start();m.attachMotionLibrary(library);
-    const p=m.players[m.selected];p.closeControl=closeControl;p.vx=3.55;p.vz=0;
-    p.locomotion.ax=2;p.locomotion.az=0;p.locomotion.heading=Math.PI/2;
-    for(let i=0;i<120;i++){p.x+=p.vx/120;p.motion.update(p,m,1/120);}
-    assert.equal(p.motion.gait,closeControl?'walk':'jog');
-    assert.equal(p.motion.clip.name,closeControl?'walk':'jog');
-    if(closeControl){assert.ok(p.motion.walkBlend>.99);assert.ok(p.motion.driveLean<.1);}
-    p.closeControl=false;p.vx=8;
-    for(let i=0;i<120;i++){p.x+=p.vx/120;p.motion.update(p,m,1/120);}
-    assert.equal(p.motion.clip.name,'sprint');
-    assert.ok(p.motion.walkBlend<.01);
+  for (const closeControl of [true, false]) {
+    const m = new Match();
+    m.start();
+    m.attachMotionLibrary(library);
+    const p = m.players[m.selected];
+    p.closeControl = closeControl;
+    p.vx = 3.55;
+    p.vz = 0;
+    p.locomotion.ax = 2;
+    p.locomotion.az = 0;
+    p.locomotion.heading = Math.PI / 2;
+    for (let i = 0; i < 120; i++) {
+      p.x += p.vx / 120;
+      p.motion.update(p, m, 1 / 120);
+    }
+    assert.equal(p.motion.gait, closeControl ? "walk" : "jog");
+    assert.equal(p.motion.clip.name, closeControl ? "walk" : "jog");
+    if (closeControl) {
+      assert.ok(p.motion.walkBlend > 0.99);
+      assert.ok(p.motion.driveLean < 0.1);
+    }
+    p.closeControl = false;
+    p.vx = 8;
+    for (let i = 0; i < 120; i++) {
+      p.x += p.vx / 120;
+      p.motion.update(p, m, 1 / 120);
+    }
+    assert.equal(p.motion.clip.name, "sprint");
+    assert.ok(p.motion.walkBlend < 0.01);
     m.physics.dispose();
   }
+});
+
+test("cruise jog has an upright relaxed presentation distinct from sprint", () => {
+  const results = [];
+  for (const sprint of [false, true]) {
+    const m = new Match();
+    m.start();
+    m.attachMotionLibrary(library);
+    const p = m.players[9];
+    p.sprintRequested = sprint;
+    p.vx = sprint ? 8 : 5;
+    p.vz = 0;
+    p.locomotion.ax = 3;
+    p.locomotion.az = 0;
+    p.locomotion.heading = Math.PI / 2;
+    for (let i = 0; i < 120; i++) {
+      p.x += p.vx / 120;
+      p.motion.update(p, m, 1 / 120);
+    }
+    results.push(p.motion.snapshot());
+    m.physics.dispose();
+  }
+  assert.equal(results[0].gait, "jog");
+  assert.equal(results[1].gait, "sprint");
+  assert.ok(results[0].relaxedBlend > 0.65 && results[1].relaxedBlend < 0.05);
+  assert.ok(results[0].driveLean < results[1].driveLean * 0.7);
 });

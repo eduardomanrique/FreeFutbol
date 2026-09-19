@@ -1,3 +1,4 @@
+import { strikePosture } from "./body-expression.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const wrapAngle = (v) => Math.atan2(Math.sin(v), Math.cos(v));
@@ -26,15 +27,21 @@ export function strikeStyle(heading, dx, dz, power, speed, type) {
       magnitude < 2.65,
   };
 }
+export function shotFacing(heading, aim) {
+  const angle = Math.abs(wrapAngle(Math.atan2(aim.x, aim.z) - heading));
+  const difficulty = clamp(angle / (Math.PI * 0.86), 0, 1);
+  return { speedScale: 0.6 - 0.45 * difficulty, difficulty };
+}
 export function shotPrecision(
   power,
   distance,
-  { finesse = false, committed = false } = {},
+  { finesse = false, committed = false, facing = 0 } = {},
 ) {
   // Gameplay index, not a measured real-world probability of scoring.
   const index = clamp(
     0.985 -
       0.14 * power * power -
+      0.4 * facing -
       0.0045 * Math.max(0, distance - 16) +
       (finesse ? 0.07 : 0) +
       (committed ? 0.06 : 0),
@@ -59,7 +66,7 @@ export function selectPassTarget(players, p, aim) {
 export function passTrajectory(distance, power, lob = false) {
   distance = Math.max(0.5, distance);
   if (lob) {
-    const flight = clamp(distance / (11 + power * 10), 0.65, 2.35);
+    const flight = clamp(distance / (11 + power * 10), 1.5, 2.35);
     const lift = 9.81 * flight * 0.5;
     // Air drag compensated by solving the same predictor used for interceptions.
     let lo = 0,
@@ -99,4 +106,58 @@ export function footBallDistance(foot, b, previous = foot) {
     1,
   );
   return Math.hypot(rx - dx * t, rz - dz * t, ry - dy * t);
+}
+
+// Earliest reachable point on the incoming trajectory, followed by an arrival
+// velocity. Uses stance acceleration in locomotion; never moves player or ball.
+export function actionApproach(p, ball, action) {
+  const incoming = Math.hypot(ball.vx, ball.vz);
+  const forward =
+    action.firstTime && incoming > 0.5
+      ? { x: -ball.vx / incoming, z: -ball.vz / incoming }
+      : { x: Math.sin(action.heading), z: Math.cos(action.heading) };
+  const behind = action.firstTime ? 0.45 : strikePosture(action).behind;
+  // Track a moving ball with its velocity rather than braking to a stationary
+  // point behind it. Stance forces still bound all changes in body momentum.
+  if (!action.firstTime && incoming > 0.5) {
+    const future = { ...ball };
+    const horizon = 0.24;
+    for (let t = 0; t < horizon; t += 1 / 120) stepBallMotion(future, 1 / 120);
+    const runningOffset = 0.12;
+    const errorX = future.x - forward.x * runningOffset - p.x - p.vx * horizon;
+    const errorZ = future.z - forward.z * runningOffset - p.z - p.vz * horizon;
+    const vx = ball.vx + errorX * 5;
+    const vz = ball.vz + errorZ * 5;
+    const speed = Math.hypot(vx, vz);
+    const cap = Math.max(7.5, Math.min(9.775, action.approachSpeed || 0));
+    const scale = speed > cap ? cap / speed : 1;
+    return { x: vx * scale, z: vz * scale };
+  }
+  const future = { ...ball };
+  let target = {
+    x: ball.x - forward.x * behind,
+    z: ball.z - forward.z * behind,
+  };
+  let horizon = 0.12;
+  for (let t = 1 / 60; t <= 0.85; t += 1 / 60) {
+    stepBallMotion(future, 1 / 60);
+    target = {
+      x: future.x - forward.x * behind,
+      z: future.z - forward.z * behind,
+    };
+    horizon = Math.max(0.12, t);
+    if (
+      Math.hypot(target.x - p.x, target.z - p.z) <=
+      0.18 + Math.hypot(p.vx, p.vz) * t + 3 * t * t
+    )
+      break;
+  }
+  const dx = target.x - p.x,
+    dz = target.z - p.z,
+    distance = Math.hypot(dx, dz);
+  const speed = Math.min(7.5, distance / horizon, Math.sqrt(12 * distance));
+  return {
+    x: distance ? (dx / distance) * speed : 0,
+    z: distance ? (dz / distance) * speed : 0,
+  };
 }

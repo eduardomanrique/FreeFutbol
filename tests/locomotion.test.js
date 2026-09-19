@@ -163,3 +163,55 @@ test("sprint launch builds speed over successive steps instead of reaching top s
   for (let i = 1; i < samples.length; i++)
     assert.ok(samples[i] > samples[i - 1]);
 });
+
+test("non-sprint jog has lower foot clearance and shorter aerial phases", () => {
+  const metrics = [];
+  for (const sprint of [false, true]) {
+    const { m, p } = setup();
+    p.vx = 5.5;
+    p.vz = 0;
+    p.sprintRequested = sprint;
+    let peak = 0,
+      air = 0;
+    for (let i = 0; i < 360; i++) {
+      stepLocomotion(p, 5.5, 0, 1 / 120);
+      if (i > 120) {
+        peak = Math.max(peak, ...p.locomotion.feet.map((f) => f.y));
+        air += Number(!p.locomotion.grounded);
+      }
+    }
+    metrics.push({ peak, air });
+    m.physics.dispose();
+  }
+  assert.ok(metrics[0].peak < metrics[1].peak - 0.04, JSON.stringify(metrics));
+  assert.ok(metrics[0].air < metrics[1].air, JSON.stringify(metrics));
+});
+
+test("ginga follows the cut side, stays bounded, and settles when play stops", () => {
+  const twists = [];
+  for (const side of [-1, 1]) {
+    const { m, p } = setup();
+    p.dribbleState = { mode: "carry" };
+    p.turnIntent = { x: 3, z: 0 };
+    for (let i = 0; i < 120; i++) stepLocomotion(p, 3, 0, 1 / 120);
+    const beforeHeight = p.locomotion.height;
+    p.turnIntent = { x: 0, z: side * 3 };
+    for (let i = 0; i < 24; i++) stepLocomotion(p, 0, side * 3, 1 / 120);
+    const e = p.locomotion.expression;
+    twists.push(e.twist);
+    assert.ok(Math.abs(e.shift) < 0.06);
+    assert.ok(e.arms > 0.04);
+    assert.ok(e.crouch > 0.04, "cut lowers the posture target");
+    assert.ok(p.locomotion.height < beforeHeight - 0.025, "physical centre of mass lowers during the cut");
+    assert.ok(e.fold > 0.1, "cut bends the trunk");
+    p.dribbleState = null;
+    p.turnIntent = null;
+    for (let i = 0; i < 240; i++) stepLocomotion(p, 0, 0, 1 / 120);
+    assert.ok(Object.values(e).every((v) => Math.abs(v) < 0.0001));
+    m.physics.dispose();
+  }
+  assert.ok(
+    twists[0] * twists[1] < 0,
+    "opposite cuts have opposite hip rotation",
+  );
+});

@@ -118,6 +118,28 @@ try {
       `${action} makes ball contact`,
     );
   }
+  for (const expired of [false, true]) {
+    await page.evaluate(() => {
+      const m = window.__test.match;
+      m.start(360, "normal", true);
+      m.random = () => 0.5;
+      Object.assign(m.ball, { owner: null, x: 30, z: 20 });
+    });
+    await page.tap("[data-touch=shoot]");
+    assert.equal((await state()).bufferedAction.type, "shoot");
+    if (expired) await page.evaluate(() => window.advanceTime(1050));
+    await page.evaluate(() => {
+      const m = window.__test.match,
+        p = m.players[m.selected];
+      Object.assign(m.ball, { x: p.x + 0.4, z: p.z, vx: 0, vz: 0, vy: 0 });
+      window.advanceTime(800);
+    });
+    assert.equal(
+      !!(await state()).lastShot,
+      !expired,
+      `touch buffer expired=${expired}`,
+    );
+  }
   await page.evaluate(() => window.__test.match.start(360, "normal", true));
   const shoot = await center("[data-touch=shoot]");
   await send("touchStart", [{ ...shoot, id: 1 }]);
@@ -141,9 +163,9 @@ try {
   ]) {
     await page.evaluate(() => {
       const m = window.__test.match;
-      m.start(360, "normal", true);
-      m.ball.owner = null;
-      m.ball.x = m.players[m.selected].x + 5; // Keep free-ball auto-reception out of this input-only fixture.
+      m.start(360, "normal", false);
+      m.ball.owner = 20;
+      m.ball.x = m.players[20].x; // Opponent possession selects defensive actions.
     });
     await page.tap(`[data-touch=${button}]`);
     assert.equal((await state()).lastAction, action);

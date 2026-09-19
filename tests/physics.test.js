@@ -40,7 +40,7 @@ test("charged shot releases possession with greater speed and a controlled fligh
   assert.ok(b.ball.vx > a.ball.vx);
   assert.ok(b.ball.vy > 0);
   assert.equal(b.lastShot.power, 1);
-  assert.equal(b.lastShot.speed, 45);
+  assert.equal(b.lastShot.speed, 27);
   tick(b, 0.2);
   assert.ok(b.ball.y > 0.11);
 });
@@ -198,7 +198,7 @@ test("full shot from edge of box reaches goal below crossbar with pace", () => {
     }
   }
   assert.equal(m.score[0], 1);
-  assert.ok(speedAtLine > 35);
+  assert.ok(speedAtLine > 20 && speedAtLine < 27);
 });
 test("rolling ball does not lose most of its speed in one second", () => {
   const m = new Match();

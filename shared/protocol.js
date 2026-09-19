@@ -78,6 +78,7 @@ const playerFields = [
   "shield",
   "closeControl",
   "sprintLaunch",
+  "sprintRequested",
   "goalkeeping",
   "receiveTurn",
   "faceHeading",

@@ -102,7 +102,11 @@ const touch = new TouchInput($("touch-controls"), {
   press(action) {
     if (action === "switch") return gameAction("switchPlayer");
     if (!["pass", "lob", "through", "shoot"].includes(action)) return;
-    if (match.ball.owner !== match.selected) {
+    if (
+      match.ball.owner !== null &&
+      match.players[match.ball.owner]?.team !==
+        (online.active ? online.team : 0)
+    ) {
       if (action === "shoot" || action === "lob")
         gameAction("tackle", action === "lob");
       return;
@@ -499,11 +503,7 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.code);
-  if (
-    e.code === actionButton &&
-    (match.charging || online.active) &&
-    shotSource === "keyboard"
-  ) {
+  if (e.code === actionButton && shotSource === "keyboard") {
     releaseShot();
   }
 });
@@ -795,13 +795,15 @@ function pollController(now) {
   }
   if (match.mode !== "playing") return;
   if (pressed.switch) gameAction("switchPlayer");
-  const hasBall = match.ball.owner === match.selected;
-  if (pressed.lob && !hasBall) gameAction("tackle", true);
-  if (pressed.shoot && !hasBall) gameAction("tackle");
+  const defending =
+    match.ball.owner !== null &&
+    match.players[match.ball.owner]?.team !== (online.active ? online.team : 0);
+  if (pressed.lob && defending) gameAction("tackle", true);
+  if (pressed.shoot && defending) gameAction("tackle");
   for (const type of ["pass", "lob", "through", "shoot"]) {
     if (
       pressed[type] &&
-      hasBall &&
+      (!defending || type === "pass" || type === "through") &&
       gameAction("beginAction", type, readInput())
     ) {
       shotStartedAt = performance.now();
@@ -810,7 +812,7 @@ function pollController(now) {
       actionButton = type;
     }
   }
-  if (shotSource === "controller" && (match.charging || online.active)) {
+  if (shotSource === "controller") {
     if (state.released[actionButton]) shotReleaseDelay = 0;
     if (state.held[actionButton]) shotReleaseDelay = null;
   }

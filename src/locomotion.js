@@ -1,3 +1,4 @@
+import { stepBodyExpression } from "./body-expression.js";
 // Reduced-order character physics, in metres / seconds / newtons.
 // Only feet in contact may accelerate the centre of mass horizontally.
 const G = 9.81,
@@ -90,8 +91,10 @@ export function ballMotionDuration(p, kind, power = 0) {
     ? clamp(0.24 - speed * 0.009, 0.14, 0.24)
     : p.ballAction?.quickTouch
       ? 0.16
-      : clamp(0.34 + 0.05 * power - speed * 0.014, 0.2, 0.4);
+      : clamp(0.34 + 0.05 * power - speed * 0.026, 0.16, 0.4);
 }
+export const strikePlantDuration = (p) =>
+  clamp(0.18 - Math.hypot(p.vx, p.vz) * 0.006, 0.12, 0.18);
 export function startBallMotion(
   p,
   target,
@@ -142,8 +145,15 @@ export function startBallMotion(
         x: target.x + Math.cos(l.heading) * offset,
         z: target.z - Math.sin(l.heading) * offset,
       };
-      if (Math.hypot(goal.x - p.x, goal.z - p.z) > 1.05) return false;
-      lift(p, foot, 0.18);
+      const duration = strikePlantDuration(p);
+      if (
+        Math.hypot(
+          goal.x - p.x - p.vx * duration,
+          goal.z - p.z - p.vz * duration,
+        ) > (Math.hypot(p.vx, p.vz) > 2 ? 0.78 : 1.05)
+      )
+        return false;
+      lift(p, foot, duration);
       foot.special = "plant";
       p.strikePlant = plant = { foot: index, target: goal };
       return false;
@@ -262,6 +272,7 @@ export function stepLocomotion(
   const stopping = desiredSpeed < 0.08;
   const agile = !!p.closeControl && speed < 4.2;
   const running = speed > 3.0 && !agile;
+  const cruising = running && p.sprintRequested === false && !p.ballAction;
   const interval =
     (agile ? 0.73 : 1) *
     clamp(0.39 - speed * 0.022, 0.205, 0.39) *
@@ -270,7 +281,9 @@ export function stepLocomotion(
   l.strideInterval = interval;
   l.strideReach = 0.4 + 0.15 * preparation;
   const flight = running
-    ? clamp(0.02 + (speed - 3) * 0.005, 0.02, 0.052)
+    ? cruising
+      ? 0.006
+      : clamp(0.02 + (speed - 3) * 0.005, 0.02, 0.052)
     : -0.075;
   const swingDuration = interval + flight;
   const contactDuration = interval - flight;
@@ -344,7 +357,8 @@ export function stepLocomotion(
         (l.feet[1 - i].contact ||
           (running &&
             !l.feet[1 - i].special &&
-            (1 - l.feet[1 - i].phase) * l.feet[1 - i].duration < 0.05))
+            (1 - l.feet[1 - i].phase) * l.feet[1 - i].duration <
+              (cruising ? 0.012 : 0.05)))
       ) {
         lift(p, l.feet[i], swingDuration);
         l.clock = 0;
@@ -405,9 +419,24 @@ export function stepLocomotion(
             (m.kind === "dribble" ? 0.06 : 0.18 + 0.12 * m.power);
       } else {
         const t = smooth((foot.phase - contactPhase) / (1 - contactPhase));
-        const rest = positionBeside(p, foot.side, l.heading);
-        foot.x = m.target.x + (rest.x - m.target.x) * t;
-        foot.z = m.target.z + (rest.z - m.target.z) * t;
+        const follows = m.kind === "strike" && m.hit && m.style !== "backheel";
+        const rest = positionBeside(
+          p,
+          foot.side,
+          l.heading,
+          follows ? 0.16 + 0.12 * m.power : 0,
+        );
+        const extension = follows
+          ? Math.sin(Math.PI * t) * (0.18 + 0.18 * m.power)
+          : 0;
+        foot.x =
+          m.target.x +
+          (rest.x - m.target.x) * t +
+          Math.sin(m.heading) * extension;
+        foot.z =
+          m.target.z +
+          (rest.z - m.target.z) * t +
+          Math.cos(m.heading) * extension;
         foot.y =
           0.15 +
           Math.sin(Math.PI * t) *
@@ -476,7 +505,9 @@ export function stepLocomotion(
     foot.y =
       0.098 * athleteScale(p.id) +
       Math.sin(Math.PI * foot.phase) *
-        (foot.settle ? 0.06 : 0.1 + Math.min(speed * 0.018, 0.16));
+        (foot.settle
+          ? 0.06
+          : (0.1 + Math.min(speed * 0.018, 0.16)) * (cruising ? 0.65 : 1));
     foot.heading = foot.fromHeading + angle(foot.fromHeading, l.heading) * t;
     if (foot.special === "windup") {
       foot.y =
@@ -513,7 +544,7 @@ export function stepLocomotion(
       )
         other.duration = Math.min(
           other.duration,
-          0.06 / Math.max(0.01, 1 - other.phase),
+          (cruising ? 0.02 : 0.06) / Math.max(0.01, 1 - other.phase),
         );
       // When the COM is already low, land the free recovery leg before
       // releasing the last support; repeated unsupported steps otherwise collapse it.
@@ -544,8 +575,8 @@ export function stepLocomotion(
   const desiredHeight =
     1.1 -
     (agile ? 0.075 : 0) -
-    (running ? 0.025 : 0) -
-    0.13 * l.cutBlend -
+    (running ? (cruising ? 0.01 : 0.025) : 0) -
+    Math.min(0.2, 0.13 * l.cutBlend + (l.expression?.crouch || 0)) -
     (stopping && speed > 1 ? 0.045 : 0);
   const normal = l.grounded
     ? clamp(
@@ -646,6 +677,7 @@ export function stepLocomotion(
   p.dx = Math.sin(l.heading);
   p.dz = Math.cos(l.heading);
   p.phase = (l.time * Math.PI * 2) / (interval * 2);
+  stepBodyExpression(p, dt);
   l.lastX = p.x;
   l.lastZ = p.z;
 }
@@ -655,6 +687,7 @@ export function locomotionSnapshot(p) {
   return {
     mode: l.mode,
     cutBlend: l.cutBlend || 0,
+    expression: l.expression,
     mass: l.mass,
     centreOfMass: { x: p.x, y: l.height, z: p.z },
     velocity: { x: p.vx, y: l.vy, z: p.vz },
