@@ -1,6 +1,6 @@
 # Backend autoritativo e partidas online
 
-Implementação local de 19/09/2026. Não publicada. Esta arquitetura substitui a proposta inicial de anfitrião autoritativo/WebRTC dos planos históricos.
+Publicado em19/09/2026 em https://kmworks.dev/futebol/. Esta arquitetura substitui a proposta inicial de anfitrião autoritativo/WebRTC dos planos históricos.
 
 ## Executar
 
@@ -66,7 +66,7 @@ Respostas: `authenticated` (time e última sequência), `room`, `snapshot` (stat
 
 Ative TRUST_PROXY somente atrás do proxy confiável, sem exposição direta da porta. Requisições HTTP de criação/entrada: 40/min/IP; upgrades WebSocket: 60/min/IP; mensagens: 90/s/conexão. Corpo HTTP até 2 KiB, WebSocket até 8 KiB. Tokens criptográficos de 32 bytes, diferentes do código público. Autenticação e origem são obrigatórias; o código da sala por si só não substitui a sessão. Logs registram criação/encerramento, falhas e métricas ao término, sem tokens. HTTPS/WSS é obrigatório na publicação via Traefik.
 
-Os limites são guardas iniciais, não capacidade comprovada do VPS. Recursos Docker propostos: 1 CPU, 768 MiB, duas partidas. O orçamento deve ser ajustado após benchmark no servidor de destino.
+Os limites são guardas iniciais, não capacidade comprovada do VPS. Recursos Docker publicados: 1 CPU, 768 MiB, duas partidas. O orçamento deve ser ajustado após benchmark no servidor de destino.
 
 ## Validação e desempenho
 
@@ -98,10 +98,14 @@ Apple M3 Pro, Node 20.19.4, 19/09/2026, dez segundos simulados por cenário. Amo
 
 Snapshots médios de aproximadamente 35,8 kB sem compressão e 7,5 kB comprimidos, estimando cerca de 300 kB/s de saída por partida somando dois clientes. Os valores de tamanho são aproximações; o relatório bruto usa bytes. Na operação real a compressão é feita separadamente por socket e há overhead de rede. A memória RSS acumulada do processo variou de 198 a 261 MiB nos três cenários; isso não mede o consumo de uma implantação com múltiplos workers. O resultado indica viabilidade local, não dimensiona o VPS.
 
-## Preparação de publicação
+## Publicação
 
-Nenhum deploy foi executado. `server/Dockerfile` e seu dockerignore constroem a imagem do backend. `deploy/package-backend.py` prepara arquivo versionado e SHA256SUMS em diretório temporário, sem alterar o manifesto da publicação vigente.
+Primeiro deploy do backend executado em19/09/2026. `server/Dockerfile` e seu dockerignore constroem a imagem do backend. `deploy/package-backend.py` prepara arquivo versionado e SHA256SUMS em diretório temporário, sem alterar o manifesto da publicação vigente.
 
 `deploy/infra/apps/futebol/docker-compose.backend.yml` é um overlay opt-in. Sua rota Traefik de prioridade 200 preserva `/futebol/api/` e prevalece sobre a rota estática de prioridade 100. O serviço não publica porta diretamente. O frontend continua no Nginx existente.
 
-A entrega futura deve publicar backend e frontend compatíveis com o protocolo 1. O script antigo `activate-vps.sh` continua responsável apenas pelo frontend; não o usar como se já ativasse o backend. Para o serviço novo será necessário extrair/verificar o arquivo versionado, apontar `/opt/futebol/backend-current` para ele e aplicar o overlay mediante pedido explícito. Rollback precisa manter versões compatíveis e encerra as partidas em andamento quando reinicia o backend.
+Frontend e backend publicados usam protocolo1. O script antigo `activate-vps.sh` continua responsável apenas pelo frontend; não o usar como se já ativasse o backend. `deploy/activate-stack.sh <frontend-id> <backend-id>` verifica os dois arquivos, salva backups, constrói imagens versionadas e atualiza somente os dois serviços, verificando saúde e preservando IDs dos demais containers. Rollback precisa manter versões compatíveis e encerra as partidas em andamento quando reinicia o backend.
+
+### Release publicado e validação
+
+Frontend20260919-852a120ee1cc; backend20260919-e3b603426115. Containers saudáveis, healthchecks HTTPS principal/www com protocolo1. Teste público de dois navegadores passou: sala, times, chute, movimento, troca, menu, recarga, interrupção/reconexão, saída e viewport mobile. Sem erros de página no teste de frontend. Backup em `/opt/futebol/deploy-backups/stack-20260919-852a120ee1cc`. Limites iniciais:8 salas e2 partidas simultâneas. Não representa benchmark de capacidade do VPS.

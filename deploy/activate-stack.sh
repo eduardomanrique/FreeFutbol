@@ -40,7 +40,7 @@ export FUTEBOL_ROOT="$product/releases/$front" FUTEBOL_BACKEND_ROOT="$product/ba
 export FUTEBOL_IMAGE="kmworks/futebol:$front" FUTEBOL_BACKEND_IMAGE="kmworks/futebol-backend:$back"
 compose=(sudo -n env "FUTEBOL_ROOT=$FUTEBOL_ROOT" "FUTEBOL_BACKEND_ROOT=$FUTEBOL_BACKEND_ROOT" "FUTEBOL_IMAGE=$FUTEBOL_IMAGE" "FUTEBOL_BACKEND_IMAGE=$FUTEBOL_BACKEND_IMAGE" docker compose -f "$infra/apps/futebol/docker-compose.yml" -f "$infra/apps/futebol/docker-compose.backend.yml" -p kmworks-infra)
 "${compose[@]}" config --quiet
-"${compose[@]}" build futebol futebol-backend
+"${compose[@]}" --progress plain build futebol futebol-backend
 sudo -n docker image tag "$FUTEBOL_IMAGE" kmworks/futebol:local
 sudo -n docker image tag "$FUTEBOL_BACKEND_IMAGE" kmworks/futebol-backend:local
 sudo -n ln -sfn "releases/$front" "$product/current"

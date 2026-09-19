@@ -280,3 +280,8 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 ## Requested frontend/backend deployment and push —19 September
 - User authorized live frontend/backend deployment and Git push. Prepared frontend20260919-852a120ee1cc and backend20260919-e3b603426115; added scoped activate-stack.sh with SHA verification, backups, immutable tags, both health checks and preservation of unrelated services. Added configurable DEPLOY_URL to existing online browser regression.
 - SSH eduardo@213.32.19.98 works; prior frontend healthy. Activation currently awaits administrative access: /opt/futebol and app descriptors are root-owned, sudo requires a password. Uploaded packages for activation; no runtime change yet. Existing unrelated dirty infra changes observed and must be preserved.
+
+### Live rollout verified
+- Deployed frontend20260919-852a120ee1cc and backend20260919-e3b603426115 using supplied sudo authentication; no credential stored in repository. Both containers healthy, old frontend backed up, other container IDs preserved. Main/www HTTPS API health returns protocol1. Public frontend browser and complete two-client online browser regression passed (including reconnect/leave/mobile), no page errors. Product push442cc20 reached origin/main; final release documentation push follows.
+
+- User explicitly confirmed unrestricted passwordless sudo for eduardo after approval review requested clearer scope. Applied root-owned mode0440 /etc/sudoers.d/99-eduardo, validated with visudo, backup under /root/sudoers-backup-20260919-futebol. Fresh sudo -k -n true succeeded. No credential saved to files or Git.

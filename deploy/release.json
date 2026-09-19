@@ -1,8 +1,8 @@
 {
-  "release": "20260918-4f411735cc91",
+  "release": "20260919-852a120ee1cc",
+  "backendRelease": "20260919-e3b603426115",
   "url": "https://kmworks.dev/futebol/",
-  "prepared": {
-    "frontend": "20260919-852a120ee1cc",
-    "backend": "20260919-e3b603426115"
-  }
+  "protocol": 1,
+  "previousFrontend": "20260918-4f411735cc91",
+  "backup": "/opt/futebol/deploy-backups/stack-20260919-852a120ee1cc"
 }
