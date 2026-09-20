@@ -1,10 +1,10 @@
 {
-  "release": "20260919-3b88a9680f76",
-  "backendRelease": "20260919-a0662844c828",
+  "release": "20260920-33a64c425a42",
+  "backendRelease": "20260920-35b5f2619e24",
   "url": "https://kmworks.dev/futebol/",
   "protocol": 1,
-  "sourceCommit": "b91d06f",
-  "previousFrontend": "20260919-852a120ee1cc",
-  "previousBackend": "20260919-e3b603426115",
-  "backup": "/opt/futebol/deploy-backups/stack-20260919-3b88a9680f76"
+  "sourceCommit": "860c51e32ddc4d4fb1b9c7760110cf8ee39e83c3",
+  "previousFrontend": "20260919-3b88a9680f76",
+  "previousBackend": "20260919-a0662844c828",
+  "backup": "/opt/futebol/deploy-backups/stack-20260920-33a64c425a42"
 }

@@ -132,7 +132,14 @@ try {
     window.onlinePads[0].buttons[4] = { pressed: false, value: 0 };
   });
   await b.waitForFunction(
-    () => JSON.parse(window.render_game_to_text()).lastAction === "switch",
+    (ack) => {
+      const s = JSON.parse(window.render_game_to_text());
+      // A previous keyboard switch may still be the last action. Wait for a
+      // fresh server acknowledgement; switching is now locked with possession.
+      return s.network.ack > ack &&
+        (s.possessionTeam === s.network.team || s.lastAction === "switch");
+    },
+    beforeControllerAck,
   );
   assert.ok((await state(b)).network.ack > beforeControllerAck);
   assert.ok((await state(b)).selected >= 11);
