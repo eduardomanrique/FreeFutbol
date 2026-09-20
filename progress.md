@@ -412,3 +412,8 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 ## Commit, push and deployment of defensive reaction update —20 September
 - Full suite passed with149 tests; production build and whitespace check pass, with the existing large-vendor-chunk warning. Goal-side defensive pressure and delayed reaction to 45-degree cuts are included in the release.
 - This update is ready for the requested commit, push and joint frontend/backend deployment. No unrelated changes were found in the worktree.
+
+## Verified commit, push and production deployment —20 September
+- Committed defensive pressure and dribble reaction changes as6c8a56f and pushed `origin/main`.
+- Published frontend20260920-960c5ccb638f and backend20260920-da3b2194709c via the scoped stack activation. Backup: /opt/futebol/deploy-backups/stack-20260920-960c5ccb638f. Health checks passed and no active matches existed before rollout.
+- Public main/www health endpoints passed. Frontend browser verification passed with Rapier,22 capsules and skinned athletes, with no page/resource errors. Two-browser online verification passed lobby, teams, shot, movement, switch, menu, reload, outage/reconnection, leave and mobile layout.

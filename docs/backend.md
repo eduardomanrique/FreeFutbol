@@ -108,4 +108,4 @@ Frontend e backend publicados usam protocolo1. O script antigo `activate-vps.sh`
 
 ### Release publicado e validação
 
-Frontend20260920-33a64c425a42; backend20260920-35b5f2619e24. Containers saudáveis, healthchecks HTTPS principal/www com protocolo1. Teste público de dois navegadores passou: sala, times, chute, movimento, troca, menu, recarga, interrupção/reconexão, saída e viewport mobile. Sem erros de página no teste de frontend. Backup em `/opt/futebol/deploy-backups/stack-20260920-33a64c425a42`. Limites iniciais:8 salas e2 partidas simultâneas. Não representa benchmark de capacidade do VPS.
+Frontend20260920-960c5ccb638f; backend20260920-da3b2194709c. Containers saudáveis, healthchecks HTTPS principal/www com protocolo1. Teste público de dois navegadores passou: sala, times, chute, movimento, troca, menu, recarga, interrupção/reconexão, saída e viewport mobile. Sem erros de página no teste de frontend. Backup em `/opt/futebol/deploy-backups/stack-20260920-960c5ccb638f`. Limites iniciais:8 salas e2 partidas simultâneas. Não representa benchmark de capacidade do VPS.
