@@ -2,6 +2,7 @@ import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { MotionLibrary } from "./motion-matching.js";
+import { headPosition } from "./heading.js";
 const assetRoot = `${import.meta.env.BASE_URL}assets/athlete/`;
 export async function loadAthleteAssets() {
   const [model, meta, data, hair] = await Promise.all([
@@ -275,6 +276,69 @@ export function animateSkinnedAthlete(rig, p, match) {
   }
   if (p.keeper && p.goalkeeping) {
     poseGoalkeeper(rig, p);
+    return;
+  }
+  if (p.throwIn) {
+    for (let i = 0; i < rig.bones.length; i++) {
+      rig.bones[i].position.fromArray(motion.idlePose, i * 7);
+      rig.bones[i].quaternion.fromArray(motion.idlePose, i * 7 + 3);
+    }
+    rig.root.rotation.set(0, l.heading, 0);
+    rig.torso.rotateX(-0.08 + (p.throwIn.phase || 0) * 0.2);
+    rig.root.updateMatrixWorld(true);
+    for (const arm of rig.arms) {
+      const b = p.throwIn.ball;
+      const target = new T.Vector3(
+        b.x + Math.cos(l.heading) * arm.side * 0.11,
+        b.y,
+        b.z - Math.sin(l.heading) * arm.side * 0.11,
+      );
+      correctLeg(
+        arm.upper,
+        arm.lower,
+        arm.hand,
+        arm.palm,
+        target,
+        2,
+        new T.Vector3(
+          Math.cos(l.heading) * arm.side,
+          0.2,
+          -Math.sin(l.heading) * arm.side,
+        ),
+      );
+    }
+    rig.root.updateMatrixWorld(true);
+    return;
+  }
+  if (p.header) {
+    // Aerial pose has no planted-foot IK: both shoes travel with the jump.
+    for (let i = 0; i < rig.bones.length; i++) {
+      rig.bones[i].position.fromArray(motion.idlePose, i * 7);
+      rig.bones[i].quaternion.fromArray(motion.idlePose, i * 7 + 3);
+    }
+    rig.root.rotation.set(0, l.heading, 0);
+    rig.torso.rotateX(p.header.fold || 0);
+    rig.head.rotateX((p.header.fold || 0) * 0.5);
+    for (const arm of rig.arms) {
+      arm.upper.rotateZ(arm.side * 0.65);
+      arm.upper.rotateX(-0.25);
+    }
+    for (const leg of rig.legs) {
+      leg.anchor = null;
+      leg.shin.rotateX(-0.18);
+    }
+    rig.root.updateMatrixWorld(true);
+    const head = rig.head.getWorldPosition(new T.Vector3());
+    const contact = headPosition(p);
+    // Head bone is at the base of the skull, 12cm below its contact centre.
+    rig.root.position.add(
+      new T.Vector3(
+        contact.x - head.x,
+        contact.y - head.y - 0.12,
+        contact.z - head.z,
+      ),
+    );
+    rig.root.updateMatrixWorld(true);
     return;
   }
   // Support-driven ginga and velocity-dependent strike loading. World-space

@@ -523,7 +523,16 @@ test("incoming passes are struck first time without possession or a trapping imp
       assert.ok(hit.incomingSpeed > 1, "ball is still rolling when struck");
       assert.equal(m.controls[0].bufferedAction, null);
       m.update(dt, { x: -1 });
-      assert.ok(p.moveIntent.x < 0, "direction returns to input after strike");
+      if (type === "shoot")
+        assert.ok(
+          m.players[m.selected].moveIntent.x < 0,
+          "shot releases first-time assistance back to input",
+        );
+      else
+        assert.ok(
+          m.players[m.selected].receiveAssist,
+          "new pass recipient uses reception assistance after the first-time strike",
+        );
       m.physics.dispose();
     }
   }
@@ -681,5 +690,52 @@ test("moving strike predicts support placement and carries momentum through cont
     );
     assert.ok(maxArms > 0.15, "arms counterbalance the preparation step");
     m.physics.dispose();
+  }
+});
+
+test("short taps prefer a nearby teammate in the aim cone while strong passes keep directional reach", async () => {
+  const { selectPassTarget } = await import("../src/ball-actions.js");
+  for (const team of [0, 1]) {
+    const dir = team ? -1 : 1;
+    const p = { id: 0, team, x: 0, z: 0 };
+    const near = { id: 1, team, x: dir * 7, z: 3 };
+    const far = { id: 2, team, x: dir * 25, z: 0 };
+    const wrong = { id: 3, team, x: -dir * 2, z: 0 };
+    const players = [p, near, far, wrong];
+    const aim = { x: dir, z: 0 };
+    assert.equal(selectPassTarget(players, p, aim, 0.1).id, 1);
+    assert.equal(selectPassTarget(players, p, aim, 0.8).id, 2);
+    assert.equal(selectPassTarget(players, p, aim, 0.1, "through").id, 2);
+    assert.equal(selectPassTarget([p, far, wrong], p, aim, 0.1).id, 2);
+  }
+});
+
+test("short-pass cone tapers from 120 to 20 total degrees with distance", async () => {
+  const { selectPassTarget, shortPassHalfAngle } =
+    await import("../src/ball-actions.js");
+  const p = { id: 0, team: 0, x: 0, z: 0 },
+    far = { id: 2, team: 0, x: 30, z: 0 };
+  for (const [distance, halfAngle] of [
+    [5, 60],
+    [14, 35],
+    [22, 10],
+  ]) {
+    assert.ok(
+      Math.abs((shortPassHalfAngle(distance) * 180) / Math.PI - halfAngle) <
+        1e-8,
+    );
+    for (const offset of [-0.1, 0.1]) {
+      const angle = ((halfAngle + offset) * Math.PI) / 180;
+      const near = {
+        id: 1,
+        team: 0,
+        x: distance * Math.cos(angle),
+        z: distance * Math.sin(angle),
+      };
+      assert.equal(
+        selectPassTarget([p, near, far], p, { x: 1, z: 0 }, 0.1).id,
+        offset < 0 ? 1 : 2,
+      );
+    }
   }
 });

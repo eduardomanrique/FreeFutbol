@@ -80,6 +80,8 @@ const playerFields = [
   "sprintLaunch",
   "sprintRequested",
   "goalkeeping",
+  "header",
+  "throwIn",
   "receiveTurn",
   "faceHeading",
 ];
@@ -92,6 +94,7 @@ export function renderState(match, tick, acknowledgements) {
     duration: match.duration,
     score: match.score,
     ball: match.ball,
+    setPiece: match.setPiece,
     controls: match.controls.map((c) => ({
       selected: c.selected,
       charge: c.charge,

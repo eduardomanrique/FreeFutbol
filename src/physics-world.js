@@ -98,10 +98,17 @@ export class FootballPhysics {
       const vx = p.vx + (p.warpVelocity?.x || 0);
       const vz = p.vz + (p.warpVelocity?.z || 0);
       body.setTranslation(
-        { x: anchorX - vx * dt, y: 0.9, z: anchorZ - vz * dt },
+        {
+          x: anchorX - vx * dt,
+          y: 0.9 + (p.header?.height || 0),
+          z: anchorZ - vz * dt,
+        },
         true,
       );
-      body.setLinvel({ x: anchored ? 0 : vx, y: 0, z: anchored ? 0 : vz }, true);
+      body.setLinvel(
+        { x: anchored ? 0 : vx, y: 0, z: anchored ? 0 : vz },
+        true,
+      );
     });
   }
   step(match, dt) {
@@ -163,6 +170,25 @@ export class FootballPhysics {
     // The engine resolves impacts; rolling resistance remains explicit for grass.
     this.world.timestep = dt;
     this.world.step();
+    this.world.contactPairsWith(this.ballCollider, (collider) => {
+      // Controlled dribbles use the existing shoe challenge/contact solver.
+      // Broad body capsules identify deflections only while the ball is free.
+      if (owned) return;
+      const i = this.players.findIndex(
+        (p) => p.collider.handle === collider.handle,
+      );
+      if (
+        i < 0 ||
+        (i === match.lastKicker && match.elapsed - match.kickReleasedAt < 0.35)
+      )
+        return;
+      let touching = false;
+      this.world.contactPair(this.ballCollider, collider, (manifold) => {
+        for (let j = 0; j < manifold.numContacts(); j++)
+          if (manifold.contactDist(j) <= 0.005) touching = true;
+      });
+      if (touching) match.recordBallTouch?.(match.players[i]);
+    });
     this.steps++;
     const pos = this.ball.translation(),
       v = this.ball.linvel();

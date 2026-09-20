@@ -52,9 +52,9 @@ export function keeperControl(p, b, time) {
     g.origin = { x: p.x, z: p.z };
     g.target = prediction;
     g.side = Math.sign(prediction.z - p.z) || 1;
-    g.duration = clamp(prediction.time - 0.19, 0.14, 0.56);
+    g.duration = clamp(prediction.time - 0.26, 0.14, 0.56);
     const reach = Math.abs(prediction.z - p.z) > 0.6 ? 0.75 : 0;
-    g.vz = clamp((prediction.z - g.side * reach - p.z) / g.duration, -4.9, 4.9);
+    g.vz = clamp((prediction.z - g.side * reach - p.z) / g.duration, -3.7, 3.7);
     g.vx = 0;
     const targetHeight = clamp(
       prediction.y - (prediction.y > 1.65 ? 0.65 : 0.35),
@@ -75,7 +75,7 @@ export function keeperControl(p, b, time) {
   return {
     x: g.mode === "set" ? x : p.x,
     z: g.mode === "set" ? z : p.z,
-    speed: g.holding ? 0 : 4.9,
+    speed: g.holding ? 0 : 3.8,
   };
 }
 export function stepKeeper(p, b, time, dt) {
@@ -88,8 +88,8 @@ export function stepKeeper(p, b, time, dt) {
   p.dz = 0;
   if (g.mode === "prepare") {
     p.vx = p.vz = 0;
-    g.height = 1.02 - 0.13 * smooth((time - g.start) / 0.19);
-    if (time - g.start >= 0.19) {
+    g.height = 1.02 - 0.13 * smooth((time - g.start) / 0.26);
+    if (time - g.start >= 0.26) {
       g.mode = "dive";
       g.launch = time;
       g.origin = { x: p.x, z: p.z };

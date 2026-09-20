@@ -159,7 +159,7 @@ O bloqueio corporal permanece relevante depois de soltar a bola: durante0,35s ap
 
 ## Antecipação de ações e passe alto — revisão19/09
 
-Passe, passe alto, profundidade ou chute antes da posse guardam um único comando por time, ligado ao atleta selecionado, por1s desde o pressionamento. Um comando novo substitui o anterior. Soltar guarda a carga sem renovar o prazo; se ainda estiver segurando no contato, usa a carga acumulada. O gesto começa com a bola ainda livre: o primeiro contato do pé já aplica passe/chute, sem domínio intermediário, impulso de amortecimento ou posse temporária. O contato deve ocorrer dentro do prazo; não basta iniciar a aproximação. Bola alta (>0,6m), fora do alcance ou perna indisponível pode impedir a batida; depois do prazo volta a recepção normal. Troca de selecionado, cancelamento, pausa/reinício ou expiração removem a intenção. Teclado, controle, touch e servidor compartilham a regra. Chute/Alto do controle/touch continuam defensivos contra posse adversária; o teclado mantém K para desarme.
+Passe, passe alto, profundidade ou chute antes da posse guardam um único comando por time, ligado ao atleta selecionado, por1s desde o pressionamento. Um comando novo substitui o anterior. Soltar guarda a carga sem renovar o prazo; se ainda estiver segurando no contato, usa a carga acumulada. O gesto começa com a bola ainda livre: o primeiro contato do pé já aplica passe/chute, sem domínio intermediário, impulso de amortecimento ou posse temporária. O contato deve ocorrer dentro do prazo; não basta iniciar a aproximação. Bola alta (>0,6m), fora do alcance ou perna indisponível pode impedir a batida; depois do prazo volta a recepção normal. Troca de selecionado, cancelamento, pausa/reinício ou expiração removem a intenção. Teclado, controle, touch e servidor compartilham a regra. Chute/Alto do controle físico continuam defensivos contra posse adversária; o touch mostra Trocar/Desarme sem posse e Proteger/Alto/Passe/Chute com posse. O teclado usa X para desarme.
 
 Passe alto usa tempo nominal de voo mínimo1,5s (antes0,65s), máximo2,35s; a velocidade horizontal é recalculada pela distância, evitando transformar passe curto em lançamento longo. Testes Rapier com2/5/15/30m e cargas0/1 verificam ápice>2,2m e chegada a até2m do receptor. A altura é do arco; obstáculos próximos ainda podem interceptar durante a subida.
 
@@ -180,3 +180,12 @@ Nos cortes, o corpo deve transferir peso entre apoios, com mobilidade de quadril
 Revisão: a ginga também deve dobrar quadril/tronco e joelhos e baixar o centro de massa durante a transferência de apoio. Após carregar atrás para passe/chute, o corpo passa à frente, acompanha a perna depois do contato e só então volta à postura normal. O recuo não termina numa pose estática. A continuação depende do contato efetivo; cancelamentos não devem dispará-la.
 
 Revisão da passada de batida: não exagerar a queda para trás. Planejar o apoio adiante da bola em movimento para que ela chegue ao lado do pé no impacto. Incluir duração do apoio e da batida na previsão, respeitar alcance da perna e ampliar o movimento contrário dos braços. Manter continuidade da velocidade do corpo pelas forças existentes.
+
+
+## Atualização de jogo e controles —20/09
+
+Ataque oferece apoios próximos com avanço dos atacantes; defesa recua e se desloca para o lado da bola, mantendo referências da formação. Passes curtos priorizam companheiros próximos num cone de abertura total120° até6m, reduzindo linearmente até20° aos22m. O receptor recebe assistência de trajetória e frenagem inclusive com direcional pressionado; o passador mantém a formação. Chute e passe também podem produzir cabeceio em cruzamentos alcançáveis.
+
+A posse do time permanece enquanto a bola viaja e muda no toque adversário. Troca manual só funciona sem posse. No celular, Proteger é mantido pressionado, e o desarme tem botão próprio. A câmera acompanha suavemente a bola e recalcula as dimensões após mudanças de orientação.
+
+Lateral espera cobrança com ambas as mãos acima/atrás da cabeça, pés na linha ou fora; escanteio espera contato do pé na bola parada dentro da área do canto. São considerados saída completa da bola, último toque, distância dos adversários, restrição de segundo toque e ausência de gol direto de lateral. Outros reinícios e regras disciplinares permanecem simplificados.

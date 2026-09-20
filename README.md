@@ -26,8 +26,9 @@ O servidor executa física e regras a 120 Hz em workers; clientes enviam comando
 - **J / L / I:** segurar para carregar passe rasteiro / alto / em profundidade; soltar agenda o contato da passada.
 - **Direcional durante a carga:** escolher a mira, conservando a direção de deslocamento anterior.
 - **Espaço:** segurar para carregar, soltar para chutar; a mira é assistida para o gol.
-- **Q:** selecionar outro jogador próximo da bola.
-- **K:** desarmar.
+- **Cabeceio em cruzamento:** pressione Espaço / X antes da chegada para finalizar ao gol, ou J / A para escorar. Usa a mesma janela de antecipação de 1 segundo: a aproximação e o salto são assistidos, e o desvio exige contato da bola com a cabeça.
+- **Q:** trocar sem posse, priorizando cobertura defensiva ou um companheiro muito próximo da bola.
+- **X:** desarmar.
 - **Esc:** pausar; configurações e controles também estão nesse menu.
 - **F:** tela cheia.
 
@@ -39,15 +40,16 @@ A partida permanece em **horizontal**, com placar, nome/fôlego e radar compacto
 
 O navegador pode recusar tela cheia; não é possível ocultar suas barras por CSS. O menu da partida oferece **Tela cheia** para tentar novamente. Há manifest com `display: fullscreen`, `orientation: landscape` e metadados de web app para abrir pelo ícone da Tela de Início no iPhone. Isso não instala o jogo automaticamente nem adiciona cache offline; o comportamento de instalação/tela cheia depende do navegador.
 
-São **cinco botões de ação**, todos transparentes, além do analógico e pausa:
+Os botões mudam conforme a posse do time: **Alto, Passe, Chute e Proteger** com posse; **Trocar e Desarme** sem posse. A posse permanece durante passes até o adversário tocar na bola. Além deles, há analógico e pausa:
 
 - Analógico esquerdo: arraste para mover/mirar; a amplitude controla a velocidade. Na borda, corre automaticamente (90% da amplitude útil); recue abaixo de78% para parar de correr. O anel acende e mostra CORRENDO. Soltar/cancelar limpa a corrida.
-- **Passe / Alto / Lançar / Chute**: segure para carregar e solte para executar.
-- Sem posse, **Chute** desarma e **Alto** dá carrinho.
+- **Passe / Alto / Chute**: segure para carregar e solte para executar.
+- **Proteger**: mantenha pressionado para reduzir a velocidade e controlar a bola de perto.
+- Sem posse, **Desarme** executa o tackle.
 - **Trocar** muda de jogador.
 - **Ⅱ** abre o menu. Pausa, perda de foco, mudança de tamanho e interrupção de toque limpam comandos, cancelando a carga sem disparar.
 
-Não há botões Correr, Proteger ou Colocado no touch, nem combinação entre botões de ação. Proteger e Colocado continuam disponíveis pelo controle físico. Mover/mirar com o analógico enquanto usa uma ação funciona com dois dedos.
+Não há botões Correr ou Colocado no touch, nem combinação entre botões de ação. Colocado continua disponível pelo controle físico. Mover/mirar com o analógico enquanto usa uma ação funciona com dois dedos.
 
 Durante a partida, a câmera fica20% mais perto no celular (jogadores aproximadamente25% maiores), mantendo o ângulo e os modos Transmissão/Tática. Desktop e câmera do menu inicial mantêm as distâncias anteriores. A câmera usa as dimensões efetivas da interface, inclusive quando girada. O menu inicial permite rolagem tanto em retrato quanto em paisagem. Validação automatizada em Chromium com emulação touch (320×568, 390×844 e 844×390), gestos multitoque, ações com contato na bola, corrida por amplitude e fallback sem fullscreen. Safari/iPhone e Android físicos ainda precisam de validação; não há medição de desempenho em hardware mobile.
 
@@ -61,7 +63,7 @@ Conecte o controle, abra o jogo e pressione um botão com a página em foco. Um 
 
 A detecção usa o layout `standard` do navegador ou o perfil aprendido. Foi removida a opção de forçar índices Xbox em relatórios Bluetooth não padronizados, pois isso podia confundir RT/LT com Menu/View. Abra **Configurações → Configurar botões do controle**, centralize os analógicos e siga os 9 botões indicados. O jogo reconhece gatilhos enviados como botões ou eixos e salva o perfil por dispositivo neste navegador. Mesmo em um layout reconhecido, essa configuração corrige remapeamentos específicos do aparelho. Somente Menu pausa.
 
-Passes e chutes carregam ao segurar e são agendados ao soltar; a bola sai no contato da perna livre, não no evento do botão. Comando de passe/chute antes de a bola chegar fica guardado por1s desde o pressionamento. O jogador prepara o gesto na chegada e bate de primeira no contato do pé, sem dominar ou parar a bola antes; se não alcançar dentro do prazo, cancela. Vale para o atleta selecionado e cancela com troca, pausa ou reinício. No controle/touch, Chute/Alto contra posse adversária continuam desarme/carrinho; com bola livre ou vindo de um companheiro, antecipam a ação ofensiva. Ao iniciar passe/chute, a assistência assume a aproximação e o posicionamento para o contato; a direção normal volta após a batida ou cancelamento. Durante a carga com posse, o direcional ajusta a mira. Passes compensam a distância e o atrito; a carga aumenta seu ritmo. Chutes de frente variam de5,4 a27m/s sem embalo (40% menos força); de costas usam15% da força anterior, chegando a6,75m/s. Ângulos intermediários reduzem força e precisão progressivamente. Passes altos têm arco acima da altura de um jogador, inclusive com pouca carga. Gestos incluem giro, calcanhar e finalização comprometida com queda, apoio da mão e recuperação.
+Passes e chutes carregam ao segurar e são agendados ao soltar; a bola sai no contato da perna livre, não no evento do botão. Comando de passe/chute antes de a bola chegar fica guardado por1s desde o pressionamento. O jogador prepara o gesto na chegada e bate de primeira no contato do pé, sem dominar ou parar a bola antes; se não alcançar dentro do prazo, cancela. Vale para o atleta selecionado e cancela com troca, pausa ou reinício. No controle físico, Chute/Alto contra posse adversária continuam desarme/carrinho. No touch, o modo defensivo mostra Trocar e Desarme. Durante um passe do próprio time, os botões ofensivos permanecem disponíveis para antecipar a ação. Ao iniciar passe/chute, a assistência assume a aproximação e o posicionamento para o contato; a direção normal volta após a batida ou cancelamento. Durante a carga com posse, o direcional ajusta a mira. Passes compensam a distância e o atrito; a carga aumenta seu ritmo. Chutes de frente variam de5,4 a27m/s sem embalo (40% menos força); de costas usam15% da força anterior, chegando a6,75m/s. Ângulos intermediários reduzem força e precisão progressivamente. Passes altos têm arco acima da altura de um jogador, inclusive com pouca carga. Gestos incluem giro, calcanhar e finalização comprometida com queda, apoio da mão e recuperação.
 
 A bola permanece dinâmica durante a condução. O portador dá impulsos em contatos discretos dos pés; entre eles a bola conserva inércia e sofre atrito. Resistência explícita de5,8m/s² mais termo dependente da velocidade. No teste Rapier isolado, bolas a5/10m/s param em1,63/6,84m. Chutes fortes ainda podem sair antes de parar; esses valores são calibração de gameplay.
 
@@ -109,7 +111,7 @@ npm run test:browser
 
 ## Limites desta versão
 
-É uma base jogável, ainda sem fidelidade visual e de animação de um FIFA/EA FC moderno. Os atletas usam malhas estilizadas com animação esquelética, e as regras e a IA são simplificadas. Não implementa impedimentos, faltas/cartões, substituições, troca de lado/intervalo ou animações específicas de cobranças. O relógio mostra 90 minutos em tempo acelerado e muda o indicador de período na metade da duração, sem pausa de intervalo.
+É uma base jogável, ainda sem fidelidade visual e de animação de um FIFA/EA FC moderno. Os atletas usam malhas estilizadas com animação esquelética, e as regras e a IA são simplificadas. Não implementa impedimentos, faltas/cartões, substituições, troca de lado/intervalo ou um conjunto completo de animações específicas de cobranças; lateral já usa gesto com as mãos e escanteio usa contato do pé. O relógio mostra 90 minutos em tempo acelerado e muda o indicador de período na metade da duração, sem pausa de intervalo.
 
 Veja a [pesquisa técnica, decisões e medições](docs/movimento-e-fisica.md).
 

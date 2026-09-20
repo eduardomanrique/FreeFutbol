@@ -1314,7 +1314,7 @@ body.mobile.playing #network-banner {
   right: 10px;
   bottom: calc(16px + env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: repeat(3, 52px);
+  grid-template-columns: repeat(2, 52px);
   gap: 7px;
 }
 .touch-actions button {

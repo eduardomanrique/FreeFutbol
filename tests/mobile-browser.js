@@ -56,6 +56,7 @@ try {
   );
   const cdp = await page.context().newCDPSession(page);
   const center = async (selector) => {
+    await page.locator(selector).waitFor({ state: "visible" });
     const r = await page.locator(selector).boundingBox();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   };
@@ -70,7 +71,7 @@ try {
     await page.evaluate(() => window.orientationRequests[0]),
     "landscape",
   );
-  assert.equal(await page.locator(".touch-actions button").count(), 5);
+  assert.equal(await page.locator(".touch-actions button:visible").count(), 4);
   // Portrait physical screen must still render a landscape game, with correct input.
   const rotatedJoy = await center(".touch-stick");
   await send("touchStart", [{ ...rotatedJoy, id: 1 }]);
@@ -103,7 +104,7 @@ try {
   await send("touchEnd", []);
   assert.equal((await state()).touch.x, 0);
   assert.deepEqual((await state()).touch.held, {});
-  for (const action of ["pass", "lob", "through", "shoot"]) {
+  for (const action of ["pass", "lob", "shoot"]) {
     await page.evaluate(() => window.__test.match.start(360, "normal", true));
     const button = await center(`[data-touch=${action}]`);
     await send("touchStart", [{ ...button, id: 1 }]);
@@ -154,19 +155,32 @@ try {
   await send("touchEnd", []);
   await page.tap("#resume");
   const selected = (await state()).selected;
+  assert.equal(await page.locator("[data-touch=switch]").isVisible(), false);
+  assert.equal(
+    (await state()).selected,
+    selected,
+    "switch is blocked in possession",
+  );
+  await page.evaluate(() => {
+    const m = window.__test.match;
+    m.start(360, "normal", false);
+    m.ball.owner = 20;
+    m.ball.x = m.players[20].x;
+    m.ball.z = m.players[20].z;
+  });
   await page.tap("[data-touch=switch]");
   assert.notEqual((await state()).selected, selected);
   await page.evaluate(() => window.__test.match.start(360, "normal", true));
-  for (const [button, action] of [
-    ["shoot", "tackle"],
-    ["lob", "slide"],
-  ]) {
+  for (const [button, action] of [["tackle", "tackle"]]) {
     await page.evaluate(() => {
       const m = window.__test.match;
       m.start(360, "normal", false);
       m.ball.owner = 20;
       m.ball.x = m.players[20].x; // Opponent possession selects defensive actions.
     });
+    await page.waitForFunction(
+      () => !document.querySelector("[data-touch=tackle]").hidden,
+    );
     await page.tap(`[data-touch=${button}]`);
     assert.equal((await state()).lastAction, action);
   }

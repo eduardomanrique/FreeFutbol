@@ -1,3 +1,4 @@
+import { followCamera } from "./camera.js";
 import {
   buildSkinnedAthlete,
   animateSkinnedAthlete,
@@ -53,6 +54,8 @@ export class Stadium {
     this.cameraMode = "broadcast";
     this.resize();
     window.addEventListener("resize", () => this.resize());
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(container);
   }
   mesh(geometry, material, x = 0, y = 0, z = 0) {
     let m = new THREE.Mesh(geometry, material);
@@ -506,16 +509,22 @@ export class Stadium {
     this.resize();
   }
   resize() {
-    const { width, height } =
-      this.renderer.domElement.parentElement.getBoundingClientRect();
-    const rotated = document.body.classList.contains("landscape-fallback");
-    this.viewWidth = rotated ? height : width;
-    this.viewHeight = rotated ? width : height;
-    this.renderer.setSize(this.viewWidth, this.viewHeight);
+    // Layout dimensions are already in the logical landscape coordinate system.
+    // A transformed bounding box can belong to the previous orientation mid-resize.
+    const parent = this.renderer.domElement.parentElement;
+    this.viewWidth = Math.max(1, parent.clientWidth);
+    this.viewHeight = Math.max(1, parent.clientHeight);
+    this.renderer.setSize(this.viewWidth, this.viewHeight, false);
     this.camera.aspect = this.viewWidth / this.viewHeight;
     this.camera.updateProjectionMatrix();
   }
   render(match, dt = 0.016) {
+    const container = this.renderer.domElement.parentElement;
+    if (
+      container.clientWidth !== this.viewWidth ||
+      container.clientHeight !== this.viewHeight
+    )
+      this.resize();
     let playing = match.mode !== "home";
     for (let i = 0; i < 22; i++) {
       if (this.rigs[i].type === "skinned")
@@ -544,42 +553,18 @@ export class Stadium {
     this.ballShadow.position.set(match.ball.x, 0.018, match.ball.z);
     this.ballShadow.material.opacity = 0.32 / (1 + match.ball.y * 0.3);
     this.ballShadow.scale.setScalar(1 + match.ball.y * 0.15);
-    let target = new THREE.Vector3(),
-      cam = new THREE.Vector3();
-    if (playing) {
-      const wide = this.cameraMode === "tactical";
-      const leadX = THREE.MathUtils.clamp(match.ball.vx * 0.12, -3, 3);
-      const leadZ = THREE.MathUtils.clamp(match.ball.vz * 0.12, -2, 2);
-      const bx = THREE.MathUtils.clamp(
-        wide ? match.ball.x * 0.7 : match.ball.x + leadX,
-        wide ? -29 : -42,
-        wide ? 29 : 42,
-      );
-      const bz = THREE.MathUtils.clamp(
-        wide ? match.ball.z * 0.36 : match.ball.z + leadZ,
-        wide ? -10 : -25,
-        wide ? 10 : 25,
-      );
-      target.set(bx, wide ? 0 : Math.min(1.5, match.ball.y * 0.25), bz);
-      cam.set(bx + 3, wide ? 69 : 25, bz + (wide ? 66 : 31));
-      if (document.body.classList.contains("mobile")) {
-        // Keep broadcast angle, bringing mobile athletes ~25% closer on screen.
-        cam.sub(target).multiplyScalar(0.8).add(target);
-      } else if (this.viewWidth < 650) {
-        cam.y *= wide ? 1.35 : 1.16;
-        cam.z += wide ? 12 : 5;
-      }
-    } else {
-      target.set(2, 0, -3);
-      cam.set(53, 74, 81);
-      if (this.viewWidth < 650) {
-        cam.set(70, 110, 105);
-      }
-    }
-    let blend = 1 - Math.exp(-dt * (playing ? 3 : 1.7));
-    this.camera.position.lerp(cam, blend);
-    this.look.lerp(target, blend);
-    this.camera.lookAt(this.look);
+    followCamera(
+      this.camera,
+      this.look,
+      {
+        ball: match.ball,
+        playing,
+        wide: this.cameraMode === "tactical",
+        mobile: document.body.classList.contains("mobile"),
+        width: this.viewWidth,
+      },
+      dt,
+    );
     this.renderer.render(this.scene, this.camera);
   }
 }

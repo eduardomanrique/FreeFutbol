@@ -223,12 +223,21 @@
           <i></i>
         </div>
         <div class="touch-actions">
-          <button data-touch="switch">Trocar</button>
-          <button data-touch="through">Lançar</button>
-          <button data-touch="lob">Alto<small>/ carrinho</small></button>
-          <button data-touch="pass">Passe</button>
-          <button data-touch="shoot" class="touch-shoot">
-            Chute<small>/ desarme</small>
+          <button data-touch="switch" data-possession="defend" hidden>
+            Trocar
+          </button>
+          <button data-touch="tackle" data-possession="defend" hidden>
+            Desarme
+          </button>
+          <button data-touch="shield" data-possession="attack">Proteger</button>
+          <button data-touch="lob" data-possession="attack">Alto</button>
+          <button data-touch="pass" data-possession="attack">Passe</button>
+          <button
+            data-touch="shoot"
+            data-possession="attack"
+            class="touch-shoot"
+          >
+            Chute
           </button>
         </div>
       </div>

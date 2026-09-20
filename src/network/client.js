@@ -250,6 +250,7 @@ export class OnlineClient {
       "duration",
       "score",
       "ball",
+      "setPiece",
       "event",
       "eventTime",
       "sequence",

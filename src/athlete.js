@@ -295,5 +295,18 @@ export function animateAthlete(rig, p, match, dt) {
     rig.torso.rotation.y += 0.35 * Math.sin(t * Math.PI);
     rig.arms[0].shoulder.rotation.z = 0.4 * Math.sin(t * Math.PI);
   }
+  if (p.header) {
+    rig.root.position.y += p.header.height;
+    rig.torso.rotation.x += p.header.fold || 0;
+    rig.head.rotation.x += (p.header.fold || 0) * 0.5;
+    rig.arms[0].shoulder.rotation.z = 0.65;
+    rig.arms[1].shoulder.rotation.z = -0.65;
+  }
+  if (p.throwIn) {
+    rig.arms.forEach((arm) => {
+      arm.shoulder.rotation.x = -2.7 + (p.throwIn.phase || 0) * 0.5;
+      arm.elbow.rotation.x = -0.45;
+    });
+  }
   rig.root.updateMatrixWorld(true);
 }

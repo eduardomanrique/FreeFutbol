@@ -82,4 +82,15 @@ export class TouchInput {
       .forEach((el) => el.classList.remove("held"));
     this.cancel();
   }
+  resetActions() {
+    for (const [pointer, action] of this.pointers) {
+      if (action === "move") continue;
+      this.pointers.delete(pointer);
+      delete this.held[action];
+      this.root
+        .querySelector(`[data-touch="${action}"]`)
+        ?.classList.remove("held");
+      this.cancel(action);
+    }
+  }
 }

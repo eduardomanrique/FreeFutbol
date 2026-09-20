@@ -28,9 +28,9 @@ function setup(z = 3, y = 1.2, speed = 20, x = 32, team = 1) {
   });
   return { m, p };
 }
-test("keepers launch toward both corners and parry at bounded hand contact at low/mid/high heights", () => {
+test("keepers launch to either side and parry reachable shots at bounded hand contact at low/mid/high heights", () => {
   for (const team of [0, 1])
-    for (const z of [-3, 3])
+    for (const z of [-2, 2])
       for (const y of [0.11, 1.2, 2.2]) {
         const { m, p } = setup(z, y, 20, 30, team);
         let airborne = false;

@@ -46,6 +46,8 @@ test("team one shots aim at the left goal and tackles retain correct last team",
     assert.equal(m.beginAction("shoot", {}), true);
     assert.ok(m.players[20].ballAction.aim.x < 0);
     m.cancelAction();
+    m.ball.owner = null;
+    m.ball.lastTeam = 0;
     m.tackle();
   });
   assert.equal(m.ball.lastTeam, 1);

@@ -50,7 +50,11 @@ export function shotPrecision(
   );
   return { index, spread: (1 - index) * (0.7 + distance * 0.08) };
 }
-export function selectPassTarget(players, p, aim) {
+// Total cone aperture: 120° up to 6m, tapering to 20° at 22m.
+export function shortPassHalfAngle(distance) {
+  return ((60 - 50 * clamp((distance - 6) / 16, 0, 1)) * Math.PI) / 180;
+}
+export function selectPassTarget(players, p, aim, power = 1, type = "pass") {
   const candidates = players.filter((q) => q.team === p.team && q.id !== p.id);
   const ranked = candidates
     .map((q) => {
@@ -58,9 +62,26 @@ export function selectPassTarget(players, p, aim) {
         dz = q.z - p.z,
         d = Math.hypot(dx, dz);
       const alignment = (dx * aim.x + dz * aim.z) / Math.max(0.001, d);
-      return { q, cost: (1 - alignment) * 45 + d * 0.12 + (q.keeper ? 5 : 0) };
+      return {
+        q,
+        d,
+        alignment,
+        cost: (1 - alignment) * 45 + d * 0.12 + (q.keeper ? 5 : 0),
+      };
     })
     .sort((a, b) => a.cost - b.cost);
+  if (type === "pass" && power <= 0.4) {
+    // Nearby options tolerate lateral aim; longer passes need tighter alignment.
+    const inCone = ranked.filter(
+      ({ d, alignment }) => alignment >= Math.cos(shortPassHalfAngle(d)),
+    );
+    const short = inCone.filter(({ d }) => d <= 22);
+    short.sort(
+      (a, b) => a.d + (1 - a.alignment) * 5 - (b.d + (1 - b.alignment) * 5),
+    );
+    if (short.length) return short[0].q;
+    if (inCone.length) return inCone[0].q;
+  }
   return ranked[0]?.q;
 }
 export function passTrajectory(distance, power, lob = false) {

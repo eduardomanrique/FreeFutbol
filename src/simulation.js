@@ -1,4 +1,13 @@
 import { keeperControl, stepKeeper, keeperHandContact } from "./goalkeeper.js";
+import { stepHeader, headerContact, headPosition } from "./heading.js";
+import { possessionTeam } from "./possession.js";
+import { placeSetPiece, updateSetPiece } from "./set-pieces.js";
+import {
+  formationTarget,
+  supportTargets,
+  activePass,
+  receptionTarget,
+} from "./tactics.js";
 import {
   shielding,
   canContestBall,
@@ -171,6 +180,9 @@ export class Match {
     );
   }
   resetPlayers(kickTeam = 0) {
+    this.setPiece = null;
+    this.restartRestriction = null;
+    this.doubleTouch = null;
     if (this.training) kickTeam = 0;
     for (const [team, control] of this.controls.entries())
       Object.assign(control, {
@@ -267,19 +279,28 @@ export class Match {
     this.sequence++;
   }
   switchPlayer() {
+    if (possessionTeam(this) === this.activeTeam) return;
+    const dir = this.activeTeam === 0 ? 1 : -1;
     let candidates = this.players.filter(
       (p) => p.team === this.activeTeam && !p.keeper && p.id !== this.selected,
     );
+    const close = candidates.filter(
+      (p) => length(p.x - this.ball.x, p.z - this.ball.z) <= 3.5,
+    );
+    const covering = candidates.filter((p) => (p.x - this.ball.x) * dir <= 0);
+    candidates = close.length ? close : covering.length ? covering : candidates;
     candidates.sort(
       (a, b) =>
         length(a.x - this.ball.x, a.z - this.ball.z) -
         length(b.x - this.ball.x, b.z - this.ball.z),
     );
+    if (!candidates.length) return;
     this.selected = candidates[0].id;
     this.lastAction = "switch";
   }
   beginAction(type, input = this.lastInput || {}) {
     const p = this.players[this.selected];
+    if (this.setPiece && this.setPiece.taker !== p.id) return false;
     if (
       this.mode !== "playing" ||
       !["pass", "lob", "through", "shoot"].includes(type) ||
@@ -385,7 +406,7 @@ export class Match {
     p.reach = null;
     p.receptionAttempt = null;
   }
-  updateFirstTimeContact(p) {
+  updateFirstTimeContact(p, dt = 1 / 120) {
     const a = p.ballAction,
       queued = this.controls[p.team].bufferedAction;
     if (
@@ -397,6 +418,10 @@ export class Match {
       return;
     const b = this.ball;
     if (!canContestBall(p, this.recentKickScreen(), b, this.elapsed)) return;
+    if (a.header) {
+      if (headerContact(p, b, dt)) this.executeHeader(p, a);
+      return;
+    }
     const motion = p.ballMotion;
     if (motion && !motion.hit && motion.kind === "strike") {
       const foot = p.locomotion.feet[motion.foot];
@@ -479,6 +504,7 @@ export class Match {
     for (const p of this.players) {
       if (p.team !== this.activeTeam) continue;
       p.ballAction = null;
+      if (p.header && p.header.height === 0) p.header = null;
       if (p.ballMotion?.kind === "strike") {
         p.locomotion.feet[p.ballMotion.foot].special = null;
         p.ballMotion = null;
@@ -609,7 +635,7 @@ export class Match {
       if (a.finesse) b.spin = b.z > 0 ? -5 : 5;
       this.lastAction = "shoot";
     } else {
-      const q = selectPassTarget(this.players, p, a.aim);
+      const q = selectPassTarget(this.players, p, a.aim, a.power, a.type);
       if (!q) return;
       const through = a.type === "through",
         lob = a.type === "lob";
@@ -623,6 +649,9 @@ export class Match {
         type: a.type,
         power: a.power,
         target: q.id,
+        flight: this.ballFlight,
+        team: p.team,
+        receiveWindow: clamp((distance / trajectory.speed) * 2 + 0.8, 1.2, 5),
         distance,
         ...trajectory,
         style: a.style.name,
@@ -658,6 +687,86 @@ export class Match {
       });
     p.ballAction = null;
     if (this.actionPlayer === p.id) this.actionPlayer = null;
+  }
+  executeHeader(p, a) {
+    const b = this.ball,
+      h = p.header;
+    const incomingSpeed = Math.hypot(b.vx, b.vy, b.vz);
+    let tx,
+      tz,
+      target = null;
+    if (a.type === "shoot") {
+      tx = p.team === 0 ? 46 : -46;
+      tz = clamp(
+        (a.targetZ || 0) +
+          (this.random() * 2 - 1) * (0.15 + (1 - a.power) * 0.3),
+        -3.4,
+        3.4,
+      );
+    } else {
+      const q = selectPassTarget(this.players, p, a.aim, a.power, a.type);
+      if (!q) return;
+      target = q.id;
+      tx = q.x + q.vx * 0.15;
+      tz = q.z + q.vz * 0.15;
+    }
+    const distance = length(tx - b.x, tz - b.z);
+    const speed =
+      a.type === "shoot"
+        ? clamp(10 + a.power * 10 + incomingSpeed * 0.18, 10, 24)
+        : clamp(7 + distance * 0.4 + a.power * 4, 7, 18);
+    const flight = Math.max(0.15, distance / speed);
+    const lift = clamp(
+      (0.65 - b.y) / flight + 4.905 * flight,
+      -6,
+      a.type === "shoot" ? 3.5 : 5,
+    );
+    const contact = { ...b },
+      head = headPosition(p);
+    this.kick(p, tx, tz, speed, lift);
+    p.kick = 0;
+    h.hit = true;
+    h.hitAt = this.elapsed;
+    h.fold = 0.3;
+    const result = {
+      type: a.type,
+      style: "header",
+      header: true,
+      firstTime: true,
+      power: a.power,
+      incomingSpeed,
+      speed,
+      lift,
+      contactAt: this.elapsed,
+      contact: { x: contact.x, y: contact.y, z: contact.z },
+      head,
+      delay: this.elapsed - a.releasedAt,
+    };
+    if (a.type === "shoot")
+      this.lastShot = {
+        ...result,
+        target: { x: tx, z: tz },
+        actualTarget: { x: tx, z: tz },
+      };
+    else {
+      this.lastPass = {
+        ...result,
+        target,
+        distance,
+        flight: this.ballFlight,
+        team: p.team,
+        receiveWindow: clamp(flight * 2 + 0.8, 1.2, 5),
+      };
+      this.selectForTeam(this.players[target]);
+    }
+    this.lastAction = a.type;
+    this.controls[p.team].bufferedAction = null;
+    this.charging = false;
+    this.charge = 0;
+    this.actionPlayer = null;
+    p.ballAction = null;
+    p.ballMotion = null;
+    p.reach = null;
   }
   updateBallControl(dt) {
     const b = this.ball;
@@ -785,6 +894,16 @@ export class Match {
     );
   }
   kick(p, tx, tz, speed, lift) {
+    if (this.restartRestriction?.player !== p.id)
+      this.restartRestriction = null;
+    if (this.setPiece?.taker === p.id) {
+      this.restartRestriction = {
+        type: this.setPiece.type,
+        player: p.id,
+        team: p.team,
+      };
+      this.setPiece = null;
+    }
     this.physics.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.ballFlight++;
     this.lastKicker = p.id;
@@ -812,6 +931,7 @@ export class Match {
     p.think = 0.8;
   }
   tackle(slide = false) {
+    if (this.setPiece || possessionTeam(this) === this.activeTeam) return;
     let p = this.players[this.selected];
     if (this.mode !== "playing" || p.tackle > 0) return;
     p.tackle = slide ? 0.95 : 0.45;
@@ -881,6 +1001,10 @@ export class Match {
           }
         }
       });
+    if (this.setPiece) {
+      this.updateSetPiece(dt);
+      return;
+    }
     let b = this.ball,
       owner = b.owner === null ? null : this.players[b.owner];
     // The opposition cannot receive or own the ball in training mode. This
@@ -889,10 +1013,22 @@ export class Match {
       b.owner = null;
       owner = null;
     }
+    const pass = activePass(this);
+    const attackingTeam = possessionTeam(this);
+    const support = supportTargets(this.players, owner, b);
     let chasers = [0, 1].map(
       (t) =>
         this.players
-          .filter((p) => p.team === t && !p.keeper && !this.isControlled(p))
+          .filter(
+            (p) =>
+              p.team === t &&
+              !p.keeper &&
+              !this.isControlled(p) &&
+              !(
+                p.id === this.lastKicker &&
+                this.elapsed - this.kickReleasedAt < 0.65
+              ),
+          )
           .sort(
             (a, c) =>
               length(a.x - b.x, a.z - b.z) - length(c.x - b.x, c.z - b.z),
@@ -902,11 +1038,15 @@ export class Match {
       const input = this.controls[p.team].lastInput;
       const control = this.controls[p.team];
       p.kick = Math.max(0, p.kick - dt * 1.15);
+      if (p.throwIn?.releasedAt && this.elapsed - p.throwIn.releasedAt > 0.55)
+        p.throwIn = null;
       p.reachCooldown = Math.max(0, (p.reachCooldown || 0) - dt);
       const screen = owner ?? this.recentKickScreen();
-      p.reach = canContestBall(p, screen, b, this.elapsed)
-        ? planBallReach(p, b)
-        : null;
+      const holdsShape = pass && p.team === pass.team && p.id !== pass.target;
+      p.reach =
+        !holdsShape && canContestBall(p, screen, b, this.elapsed)
+          ? planBallReach(p, b)
+          : null;
       p.touchCooldown = Math.max(0, (p.touchCooldown || 0) - dt);
       p.recovery = Math.max(0, (p.recovery || 0) - dt);
       p.followTime = Math.max(0, (p.followTime || 0) - dt);
@@ -921,6 +1061,21 @@ export class Match {
           this.withTeam(p.team, () => this.cancelAction());
       }
       const action = p.ballAction;
+      stepHeader(
+        p,
+        b,
+        action,
+        this.elapsed,
+        dt,
+        Math.min(
+          0.9,
+          (control.bufferedAction?.expiresAt ?? this.elapsed) - this.elapsed,
+        ),
+      );
+      if (action?.header) {
+        p.reach = null;
+        p.rootWarp = null;
+      }
       const movement = action ? action.movement : input;
       p.tackle = Math.max(0, p.tackle - dt);
       p.think -= dt;
@@ -1020,12 +1175,12 @@ export class Match {
           p.think = 0.8;
         }
       } else {
-        let own = owner?.team === p.team;
-        let shift = clamp(b.x * 0.36, -16, 16);
-        tx = clamp(p.homeX + shift + (own ? dir * 9 : 0), -40, 40);
-        tz = clamp(p.homeZ + b.z * 0.2, -27, 27);
-        speed = own ? 4.5 : 4.1;
-        if (p.id === chasers[p.team] && (!owner || !own)) {
+        let own = attackingTeam === p.team;
+        const target = support.get(p.id) ?? formationTarget(p, b, own);
+        tx = target.x;
+        tz = target.z;
+        speed = own ? 5.6 : 4.1;
+        if (p.id === chasers[p.team] && (!own || (b.owner === null && !pass))) {
           tx = b.x + b.vx * 0.18;
           tz = b.z + b.vz * 0.18;
           speed =
@@ -1036,8 +1191,22 @@ export class Match {
                 : 5.6;
         }
       }
+      // Until reception, steer even held movement toward a reachable future
+      // ball position. First-time strikes retain their own approach controller.
+      p.receiveAssist = null;
+      if (pass?.target === p.id && !action) {
+        const target = receptionTarget(
+          p,
+          b,
+          input.sprint && p.stamina > 0.1 ? 8.5 : 5.8,
+        );
+        p.receiveAssist = target;
+        tx = target.x;
+        tz = target.z;
+        speed = target.speed / 1.15;
+      }
       if (!this.training || p.team === 0) {
-        if (p.reach && !action && !p.keeper) {
+        if (p.reach && !action && !p.keeper && !p.receiveAssist) {
           const rx = p.reach.x - p.x,
             rz = p.reach.z - p.z,
             rd = length(rx, rz);
@@ -1128,7 +1297,7 @@ export class Match {
         p.dribbleState = null;
         p.lastDribble = null;
       }
-      if (action?.firstTime) {
+      if (action?.firstTime && !action.header) {
         const guided = actionApproach(p, b, action);
         targetX = guided.x;
         targetZ = guided.z;
@@ -1147,6 +1316,17 @@ export class Match {
             });
         }
       }
+      if (action?.header && p.header && !p.header.hit) {
+        const h = p.header;
+        const dx = h.x - p.x,
+          dz = h.z - p.z;
+        const remaining = Math.max(0.12, h.contactAt - this.elapsed);
+        const d = length(dx, dz),
+          speed = Math.min(5, d / remaining);
+        targetX = d ? (dx / d) * speed : 0;
+        targetZ = d ? (dz / d) * speed : 0;
+        p.faceHeading = Math.atan2(action.aim.x, action.aim.z);
+      }
       // Preserve the requested exit direction while foot/ball guidance brakes
       // or catches the ball. Facing must not wait for velocity to reverse.
       p.turnIntent =
@@ -1159,11 +1339,31 @@ export class Match {
             : { x: targetX, z: targetZ }
           : null;
       p.moveIntent = { x: targetX, z: targetZ };
-      stepLocomotion(p, targetX, targetZ, dt, {
-        charging: control.charging && this.isControlled(p) && b.owner === p.id,
-        charge: control.charge,
-        reach: p.reach,
-      });
+      if (p.header?.height > 0) {
+        p.x += p.vx * dt;
+        p.z += p.vz * dt;
+        p.locomotion.grounded = false;
+        p.locomotion.height = 1.1 + p.header.height;
+        p.locomotion.vy =
+          p.header.jumpVelocity - 9.81 * (this.elapsed - p.header.launchAt);
+        p.locomotion.fx = p.locomotion.fz = p.locomotion.normalForce = 0;
+        for (const foot of p.locomotion.feet) {
+          foot.contact = false;
+          foot.normalForce = 0;
+        }
+        p.header.wasAirborne = true;
+      } else {
+        if (p.header?.wasAirborne) {
+          initLocomotion(p);
+          p.header.wasAirborne = false;
+        }
+        stepLocomotion(p, targetX, targetZ, dt, {
+          charging:
+            control.charging && this.isControlled(p) && b.owner === p.id,
+          charge: control.charge,
+          reach: p.reach,
+        });
+      }
       if (p.keeper && (!this.training || p.team === 0))
         stepKeeper(p, b, this.elapsed, dt);
       p.warpVelocity = { x: 0, z: 0 };
@@ -1200,7 +1400,7 @@ export class Match {
       p.locomotion.lastZ = p.z;
     }
     for (const p of this.players)
-      this.withTeam(p.team, () => this.updateFirstTimeContact(p));
+      this.withTeam(p.team, () => this.updateFirstTimeContact(p, dt));
     this.tryAutomaticReception(input, dt);
     this.updateGoalkeepers(dt);
     this.physics.preparePlayers(this.players, dt, this.training);
@@ -1243,6 +1443,13 @@ export class Match {
       const speed = length(b.vx, b.vz),
         dir = p.team === 0 ? 1 : -1;
       const caught = speed < 14 && Math.abs(b.z - p.z) < 1;
+      if (
+        this.restartRestriction?.type === "throw" &&
+        this.restartRestriction.team === p.team
+      ) {
+        this.restart(1 - p.team, p.x, p.z, "TIRO LIVRE INDIRETO");
+        return;
+      }
       g.result = caught ? "catch" : "parry";
       this.lastSave = {
         player: p.id,
@@ -1264,6 +1471,7 @@ export class Match {
       }
       b.lastTeam = p.team;
       b.spin = 0;
+      this.recordBallTouch(p);
       this.physics.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
       this.announce(caught ? "GOLEIRO SEGUROU" : "DEFESA DO GOLEIRO", 1.4);
     }
@@ -1283,6 +1491,7 @@ export class Match {
       if (p.ballAction?.firstTime) continue;
       if (
         p.keeper ||
+        this.restartRestriction?.player === p.id ||
         (this.training && p.team === 1) ||
         (p.id === this.lastKicker && this.elapsed - this.kickReleasedAt < 0.45)
       )
@@ -1387,6 +1596,7 @@ export class Match {
       p.receiveTurn = 0.65;
       p.receiveFacing = Math.atan2(b.x - p.x, b.z - p.z);
       b.lastTeam = p.team;
+      this.recordBallTouch(p);
       b.vy = 0;
       b.spin = 0;
       this.physics.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -1402,8 +1612,21 @@ export class Match {
   }
   integrateBall(dt) {
     let b = this.ball,
-      oldX = b.x;
+      oldX = b.x,
+      oldZ = b.z,
+      oldY = b.y;
     this.physics.step(this, dt);
+    if (this.doubleTouch) {
+      const team = this.doubleTouch.team;
+      this.doubleTouch = null;
+      this.restart(
+        1 - team,
+        clamp(b.x, -43, 43),
+        clamp(b.z, -28, 28),
+        "TIRO LIVRE INDIRETO",
+      );
+      return;
+    }
     if (this.mode === "goal") {
       if (Math.abs(b.x) > 48) {
         b.x = Math.sign(b.x) * 48;
@@ -1415,12 +1638,43 @@ export class Match {
       }
       return;
     }
+    const sideTime =
+      Math.abs(b.z) > 30.11
+        ? clamp((Math.sign(b.z) * 30.11 - oldZ) / (b.z - oldZ || 1), 0, 1)
+        : Infinity;
+    const endTime =
+      Math.abs(b.x) > 46.11
+        ? clamp((Math.sign(b.x) * 46.11 - oldX) / (b.x - oldX || 1), 0, 1)
+        : Infinity;
+    if (sideTime < endTime) {
+      this.restart(
+        1 - b.lastTeam,
+        clamp(oldX + (b.x - oldX) * sideTime, -46, 46),
+        Math.sign(b.z) * 30,
+        "LATERAL",
+      );
+      return;
+    }
     if (Math.abs(b.x) > 46.11) {
       let t = clamp((Math.sign(b.x) * 46.11 - oldX) / (b.x - oldX || 1), 0, 1);
-      let crossZ = b.z - b.vz * dt * (1 - t),
-        crossY = b.y - b.vy * dt * (1 - t);
+      let crossZ = oldZ + (b.z - oldZ) * t,
+        crossY = oldY + (b.y - oldY) * t;
       if (Math.abs(crossZ) < 3.55 && crossY < 2.33) {
         let team = b.x > 0 ? 0 : 1;
+        if (
+          this.restartRestriction?.type === "throw" ||
+          (this.restartRestriction?.type === "corner" &&
+            this.restartRestriction.team !== team)
+        ) {
+          const ownGoal = this.restartRestriction.team !== team;
+          this.restart(
+            ownGoal ? team : 1 - team,
+            Math.sign(b.x) * (ownGoal ? 45.6 : 40),
+            ownGoal ? Math.sign(crossZ || 1) * 29.6 : 0,
+            ownGoal ? "ESCANTEIO" : "TIRO DE META",
+          );
+          return;
+        }
         this.score[team]++;
         this.mode = "goal";
         this.restartTimer = 3;
@@ -1441,13 +1695,27 @@ export class Match {
       this.restart(
         1 - b.lastTeam,
         clamp(b.x, -44, 44),
-        Math.sign(b.z) * 29,
+        Math.sign(b.z) * 30,
         "LATERAL",
       );
   }
   restart(team, x, z, message) {
     this.cancelAllActions();
     if (this.training) team = 0;
+    if (message === "LATERAL" || message === "ESCANTEIO") {
+      placeSetPiece(
+        this,
+        team,
+        x,
+        z,
+        message === "LATERAL" ? "throw" : "corner",
+      );
+      this.announce(message);
+      return;
+    }
+    this.setPiece = null;
+    this.restartRestriction = null;
+    this.ballFlight++;
     let p = this.players
       .filter((q) => q.team === team && !q.keeper)
       .sort((a, c) => length(a.x - x, a.z - z) - length(c.x - x, c.z - z))[0];
@@ -1472,6 +1740,27 @@ export class Match {
     p.think = 0.8;
     this.announce(message);
   }
+  updateSetPiece(dt) {
+    updateSetPiece(this, dt);
+  }
+  recordBallTouch(p) {
+    if (this.setPiece) return;
+    if (
+      this.restartRestriction?.player === p.id &&
+      this.elapsed - this.kickReleasedAt > 0.35
+    ) {
+      this.doubleTouch = { team: p.team };
+      return;
+    }
+    if (this.restartRestriction && this.restartRestriction.player !== p.id)
+      this.restartRestriction = null;
+    this.ball.lastTeam = p.team;
+    if (
+      this.ball.owner !== null &&
+      this.players[this.ball.owner].team !== p.team
+    )
+      this.ball.owner = null;
+  }
   snapshot() {
     return {
       mode: this.mode,
@@ -1483,6 +1772,8 @@ export class Match {
       duration: this.duration,
       score: this.score,
       training: this.training,
+      possessionTeam: possessionTeam(this),
+      setPiece: this.setPiece,
       selected: this.selected,
       charge: this.charge,
       charging: this.charging,
@@ -1501,6 +1792,8 @@ export class Match {
       lastShot: this.lastShot ?? null,
       lastReception: this.lastReception ?? null,
       lastPass: this.lastPass ?? null,
+      header: this.players[this.selected]?.header ?? null,
+      receiveAssist: this.players[this.selected]?.receiveAssist ?? null,
       lastTouch: this.lastTouch ?? null,
       dribbling: this.players[this.selected]?.dribbleState ?? null,
       action: this.players[this.actionPlayer]?.ballAction ?? null,

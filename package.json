@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test tests/physics.test.js tests/gamepad.test.js tests/athlete.test.js tests/locomotion.test.js tests/interactions.test.js tests/motion.test.js tests/rapier.test.js tests/reception.test.js tests/ball-actions.test.js tests/dribbling.test.js tests/goalkeeper.test.js tests/training.test.js tests/multiplayer.test.js tests/server.test.js tests/worker.test.js tests/network-conditions.test.js",
+    "test": "node --test tests/set-pieces.test.js tests/camera.test.js tests/heading.test.js tests/tactics.test.js tests/physics.test.js tests/gamepad.test.js tests/athlete.test.js tests/locomotion.test.js tests/interactions.test.js tests/motion.test.js tests/rapier.test.js tests/reception.test.js tests/ball-actions.test.js tests/dribbling.test.js tests/goalkeeper.test.js tests/training.test.js tests/multiplayer.test.js tests/server.test.js tests/worker.test.js tests/network-conditions.test.js",
     "test:browser": "node tests/browser.test.js",
     "format": "prettier --write src index.html tests/physics.test.js tests/browser.test.js",
     "test:controller": "node tests/controller-browser.js",

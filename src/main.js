@@ -9,6 +9,7 @@ import { OnlineClient } from "./network/client.js";
 import { Match } from "./simulation.js";
 import { Stadium } from "./scene.js";
 import { TouchInput } from "./touch.js";
+import { possessionTeam } from "./possession.js";
 import { ControllerInput } from "./gamepad.js";
 import { Calibration, CALIBRATION_STEPS } from "./calibration.js";
 const $ = (id) => document.getElementById(id);
@@ -101,12 +102,9 @@ const touch = new TouchInput($("touch-controls"), {
   rotated: () => document.body.classList.contains("landscape-fallback"),
   press(action) {
     if (action === "switch") return gameAction("switchPlayer");
+    if (action === "tackle") return gameAction("tackle");
     if (!["pass", "lob", "through", "shoot"].includes(action)) return;
-    if (
-      match.ball.owner !== null &&
-      match.players[match.ball.owner]?.team !==
-        (online.active ? online.team : 0)
-    ) {
+    if (possessionTeam(match) !== (online.active ? online.team : 0)) {
       if (action === "shoot" || action === "lob")
         gameAction("tackle", action === "lob");
       return;
@@ -305,8 +303,10 @@ function showModal(type) {
         ["Passe rasteiro · segurar e soltar", "A / J"],
         ["Passe alto · segurar e soltar", "B / L"],
         ["Chutar · segure e solte", "X / ESPAÇO"],
+        ["Cabecear cruzamento ao gol · antes da bola chegar", "X / ESPAÇO"],
+        ["Passe de cabeça · antes da bola chegar", "A / J"],
         ["Trocar jogador", "LB / Q"],
-        ["Desarmar / carrinho", "X / B (sem bola)"],
+        ["Desarmar / carrinho", "X no teclado · X / B no controle"],
         ["Passe em profundidade", "Y / I"],
         ["Proteger / marcar", "LT"],
         ["Chute colocado · segurar RB ao soltar X", "RB + X"],
@@ -322,7 +322,7 @@ function showModal(type) {
   }
   if (type === "controls" && mobile) {
     body =
-      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Segure Passe, Alto, Lançar ou Chute para carregar e solte para executar; use o analógico para mirar. Sem a bola, Chute desarma e Alto dá carrinho. Trocar seleciona outro jogador. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
+      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Com posse, use Passe, Alto e Chute; mantenha Proteger pressionado para proteger a bola. Segure os botões de passe ou chute para carregar e solte para executar; use o analógico para mirar. Em cruzamentos, pressione Chute antes da chegada para cabecear ao gol, ou Passe para escorar. Sem posse, aparecem apenas Trocar e Desarme. Durante um passe, os botões continuam no modo do time que tocou por último. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
   }
   if (type === "settings") {
     $("modal-title").textContent = "Do seu jeito";
@@ -490,7 +490,7 @@ window.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (match.mode !== "playing" || modalType || e.repeat) return;
   if (e.code === "KeyQ") gameAction("switchPlayer");
-  if (e.code === "KeyK") gameAction("tackle");
+  if (e.code === "KeyX") gameAction("tackle");
   const type = { KeyJ: "pass", KeyL: "lob", Space: "shoot", KeyI: "through" }[
     e.code
   ];
@@ -539,7 +539,7 @@ function readInput() {
     input.z = touch.z;
   }
   input.sprint ||= !!controllerState.held.sprint || !!touch.held.sprint;
-  input.jockey = !!controllerState.held.jockey;
+  input.jockey = !!controllerState.held.jockey || !!touch.held.shield;
   input.finesse = !!controllerState.held.finesse;
   return input;
 }
@@ -559,6 +559,14 @@ function step(dt) {
   if (match.mode === "finished" && !modalType) showModal("finished");
 }
 function updateHUD() {
+  const attacking = possessionTeam(match) === (online.active ? online.team : 0);
+  if (touch.attacking !== attacking) {
+    touch.resetActions();
+    touch.attacking = attacking;
+    document.querySelectorAll("[data-possession]").forEach((button) => {
+      button.hidden = (button.dataset.possession === "attack") !== attacking;
+    });
+  }
   const training = match.training === true;
   let mins = training ? 0 : (match.elapsed / match.duration) * 90;
   let sec = Math.floor(mins * 60);
@@ -795,9 +803,7 @@ function pollController(now) {
   }
   if (match.mode !== "playing") return;
   if (pressed.switch) gameAction("switchPlayer");
-  const defending =
-    match.ball.owner !== null &&
-    match.players[match.ball.owner]?.team !== (online.active ? online.team : 0);
+  const defending = possessionTeam(match) !== (online.active ? online.team : 0);
   if (pressed.lob && defending) gameAction("tackle", true);
   if (pressed.shoot && defending) gameAction("tackle");
   for (const type of ["pass", "lob", "through", "shoot"]) {
