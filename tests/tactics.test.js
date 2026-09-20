@@ -201,3 +201,101 @@ test("receiver follows predicted trajectory despite held input, then returns con
       m.physics.dispose();
     }
 });
+
+// Regression: nearest-to-ball alone kept selecting an already beaten player.
+test("automatic pressure protects the goal, with close recovery and last-defender exceptions", async () => {
+  const { defensivePresser } = await import("../src/tactics.js");
+  for (const team of [0, 1]) {
+    const side = team ? 1 : -1;
+    const b = { x: 0, z: 0 };
+    const behind = { id: 1, team, x: -side * 4, z: 0 };
+    const ahead = { id: 2, team, x: side * 8, z: 1 };
+    const keeper = { id: 3, team, x: side, z: 0, keeper: true };
+    assert.equal(defensivePresser([behind, ahead, keeper], team, b), ahead.id);
+    behind.x = -side * 2;
+    assert.equal(defensivePresser([behind, ahead, keeper], team, b), behind.id);
+    behind.x = -side * 4;
+    assert.equal(defensivePresser([behind, keeper], team, b), behind.id);
+    assert.equal(
+      defensivePresser([behind, ahead], team, b, (p) => p.id !== ahead.id),
+      undefined,
+      "a human protecting the goal does not make a distant beaten AI chase",
+    );
+  }
+});
+
+test("defender reacts to a 45 degree cut after a bounded delay at different update rates", async () => {
+  const { defensiveTarget } = await import("../src/tactics.js");
+  for (const hz of [30, 60, 120]) {
+    const p = { team: 1, x: 5, z: 0 };
+    const b = { x: 1, z: 0, vx: 4, vz: 0 };
+    for (let i = 0; i < hz; i++) defensiveTarget(p, b, i / hz);
+    let reaction;
+    for (let i = 0; i < hz / 2; i++) {
+      const t = i / hz;
+      const target = defensiveTarget(
+        p,
+        { ...b, x: 1 + 3 * t, z: 3 * t, vx: 3, vz: 3 },
+        1 + t,
+      );
+      if (target.z > 0 && reaction === undefined) reaction = t;
+    }
+    assert.ok(
+      reaction >= 0.23 && reaction <= 0.28,
+      `reaction at ${hz}Hz: ${reaction}`,
+    );
+    assert.ok(p.defensiveTracking.length <= hz * 0.3 + 2);
+  }
+});
+
+test("a close 45 degree cut can beat the final AI defender on either side without losing possession", async () => {
+  const { initLocomotion } = await import("../src/locomotion.js");
+  for (const side of [-1, 1]) {
+    const m = new Match({ random: () => 0 });
+    m.start();
+    const p = m.players[9],
+      q = m.players[20];
+    p.id = 0;
+    q.id = 1;
+    m.players = [p, q];
+    m.selected = 0;
+    Object.assign(p, { x: -15, z: 0 });
+    Object.assign(q, { x: 35, z: 25, think: 99 });
+    Object.assign(m.ball, { owner: 0, lastTeam: 0, x: -14.45, z: 0 });
+    initLocomotion(p);
+    initLocomotion(q);
+    for (let i = 0; i < 180; i++) m.update(1 / 120, { x: 1 });
+    Object.assign(q, {
+      x: p.x + 2,
+      z: p.z,
+      vx: -3,
+      vz: 0,
+      dx: -1,
+      dz: 0,
+      think: 99,
+    });
+    initLocomotion(q);
+    q.defensiveTracking = null;
+    Object.assign(m.ball, {
+      owner: 0,
+      lastTeam: 0,
+      x: p.x + 0.55,
+      z: p.z,
+      vx: p.vx,
+      vz: 0,
+    });
+    p.ballMotion = null;
+    let passed = false;
+    for (let i = 0; i < 200; i++) {
+      m.update(1 / 120, { x: Math.SQRT1_2, z: side * Math.SQRT1_2 });
+      assert.equal(
+        m.ball.owner,
+        0,
+        "ball still requires physical contest; this timed cut stays clear",
+      );
+      passed ||= p.x > q.x + 1;
+    }
+    assert.ok(passed, `cut side ${side}`);
+    m.physics.dispose();
+  }
+});

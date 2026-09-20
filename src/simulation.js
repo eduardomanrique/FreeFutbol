@@ -7,6 +7,8 @@ import {
   supportTargets,
   activePass,
   receptionTarget,
+  defensivePresser,
+  defensiveTarget,
 } from "./tactics.js";
 import {
   shielding,
@@ -1016,27 +1018,36 @@ export class Match {
     const pass = activePass(this);
     const attackingTeam = possessionTeam(this);
     const support = supportTargets(this.players, owner, b);
-    let chasers = [0, 1].map(
-      (t) =>
-        this.players
-          .filter(
-            (p) =>
-              p.team === t &&
-              !p.keeper &&
-              !this.isControlled(p) &&
-              !(
-                p.id === this.lastKicker &&
-                this.elapsed - this.kickReleasedAt < 0.65
-              ),
-          )
-          .sort(
-            (a, c) =>
-              length(a.x - b.x, a.z - b.z) - length(c.x - b.x, c.z - b.z),
-          )[0]?.id,
+    const eligibleChaser = (p) =>
+      !this.isControlled(p) &&
+      !(p.id === this.lastKicker && this.elapsed - this.kickReleasedAt < 0.65);
+    let chasers = [0, 1].map((t) =>
+      attackingTeam !== t
+        ? defensivePresser(this.players, t, b, eligibleChaser)
+        : this.players
+            .filter(
+              (p) =>
+                p.team === t &&
+                !p.keeper &&
+                !this.isControlled(p) &&
+                !(
+                  p.id === this.lastKicker &&
+                  this.elapsed - this.kickReleasedAt < 0.65
+                ),
+            )
+            .sort(
+              (a, c) =>
+                length(a.x - b.x, a.z - b.z) - length(c.x - b.x, c.z - b.z),
+            )[0]?.id,
     );
     for (let p of this.players) {
       const input = this.controls[p.team].lastInput;
       const control = this.controls[p.team];
+      const defensiveAim =
+        p.team !== attackingTeam && !p.keeper && !this.isControlled(p)
+          ? defensiveTarget(p, b, this.elapsed, this.difficulty)
+          : null;
+      if (!defensiveAim) p.defensiveTracking = null;
       p.kick = Math.max(0, p.kick - dt * 1.15);
       if (p.throwIn?.releasedAt && this.elapsed - p.throwIn.releasedAt > 0.55)
         p.throwIn = null;
@@ -1181,8 +1192,8 @@ export class Match {
         tz = target.z;
         speed = own ? 5.6 : 4.1;
         if (p.id === chasers[p.team] && (!own || (b.owner === null && !pass))) {
-          tx = b.x + b.vx * 0.18;
-          tz = b.z + b.vz * 0.18;
+          tx = defensiveAim?.x ?? b.x + b.vx * 0.18;
+          tz = defensiveAim?.z ?? b.z + b.vz * 0.18;
           speed =
             this.difficulty === "easy" && p.team === 1
               ? 4.0

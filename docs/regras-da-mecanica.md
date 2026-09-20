@@ -189,3 +189,9 @@ Ataque oferece apoios próximos com avanço dos atacantes; defesa recua e se des
 A posse do time permanece enquanto a bola viaja e muda no toque adversário. Troca manual só funciona sem posse. No celular, Proteger é mantido pressionado, e o desarme tem botão próprio. A câmera acompanha suavemente a bola e recalcula as dimensões após mudanças de orientação.
 
 Lateral espera cobrança com ambas as mãos acima/atrás da cabeça, pés na linha ou fora; escanteio espera contato do pé na bola parada dentro da área do canto. São considerados saída completa da bola, último toque, distância dos adversários, restrição de segundo toque e ausência de gol direto de lateral. Outros reinícios e regras disciplinares permanecem simplificados.
+
+## Pressão de frente e reação aos cortes —20/09
+
+A pressão automática prioriza um jogador entre a bola e o próprio gol. Um jogador já ultrapassado só é escolhido se estiver até2,5m da bola ou se não houver jogador de linha do lado do próprio gol. Um defensor controlado pelo usuário também conta como cobertura. Os demais retomam sua formação em vez de perseguir diretamente por trás.
+
+A IA persegue uma observação atrasada da bola:0,30s no fácil,0,24s no normal e0,16s no difícil. Usa antecipação curta de0,10s sobre essa observação e aproximação pelo lado do gol. Isso cria uma janela após um corte sem alterar o contato físico exigido para roubar a bola, as probabilidades de recepção, a inércia ou a resposta do jogador controlado. Os tempos são calibração de gameplay. Cortes mal posicionados ainda podem ser bloqueados.

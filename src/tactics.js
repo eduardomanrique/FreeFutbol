@@ -1,6 +1,46 @@
 import { stepBallMotion } from "./ball-physics.js";
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+export function defensivePresser(players, team, ball, eligible = () => true) {
+  const goalSide = team === 0 ? -1 : 1;
+  const defenders = players.filter((p) => p.team === team && !p.keeper);
+  const distance = (p) => Math.hypot(p.x - ball.x, p.z - ball.z);
+  const ahead = (p) => (p.x - ball.x) * goalSide >= 0;
+  const available = defenders
+    .filter(eligible)
+    .sort((a, b) => distance(a) - distance(b));
+  // A nearby beaten defender can still contest. Otherwise protect the goal
+  // with a player facing the attack, including a human-controlled defender.
+  const close = available.find((p) => distance(p) <= 2.5);
+  if (close) return close.id;
+  if (defenders.some(ahead)) return available.find(ahead)?.id;
+  return available[0]?.id;
+}
+
+export function defensiveTarget(p, ball, elapsed, difficulty = "normal") {
+  const delay =
+    difficulty === "easy" ? 0.3 : difficulty === "hard" ? 0.16 : 0.24;
+  let memory = p.defensiveTracking;
+  if (!memory || elapsed < memory[0].time || elapsed - memory.at(-1).time > 0.5)
+    memory = p.defensiveTracking = [];
+  memory.push({
+    time: elapsed,
+    x: ball.x,
+    z: ball.z,
+    vx: ball.vx,
+    vz: ball.vz,
+  });
+  while (memory.length > 1 && memory[1].time <= elapsed - delay) memory.shift();
+  const seen = memory[0];
+  const goalSide = p.team === 0 ? -1 : 1;
+  const goalGap = (p.x - seen.x) * goalSide;
+  // Approach from the goal side; a beaten nearby player still contests the ball.
+  return {
+    x: seen.x + seen.vx * 0.1 + (goalGap > 1 ? goalSide * 0.7 : 0),
+    z: seen.z + seen.vz * 0.1,
+  };
+}
+
 // Home positions remain the anchors; only the designated presser/receiver
 // leaves the block to contest the ball.
 export function formationTarget(p, ball, attacking) {

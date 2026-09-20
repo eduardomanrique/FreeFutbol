@@ -137,3 +137,5 @@ Controle próximo com LT/analógico suave e goleiros com saltos, contato das mã
 ## Arena de treino
 
 Na tela inicial, selecione **Arena de treino** em **Modo de jogo** e inicie. Todos os adversários, incluindo o goleiro, permanecem parados como obstáculos sólidos. Seu time continua ativo para praticar dribles, passes e finalizações, sem limite de tempo. O menu de pausa permite reiniciar ou voltar para selecionar **Partida**.
+
+A pressão defensiva automática prioriza quem está entre a bola e o gol. Quem ficou para trás só persegue se estiver até2,5m da bola ou se não houver cobertura de linha à frente. A IA leva0,30/0,24/0,16s para reagir à trajetória no fácil/normal/difícil, permitindo abrir espaço com cortes; o desarme continua dependendo de alcance e contato físico.
