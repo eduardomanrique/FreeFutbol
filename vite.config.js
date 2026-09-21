@@ -9,6 +9,10 @@ export default defineConfig({
   build: {
     target: "esnext",
     rollupOptions: {
+      input: {
+        game: "index.html",
+        "asset-lab": "asset-lab.html",
+      },
       output: {
         manualChunks: {
           physics: ["@dimforge/rapier3d-compat"],

@@ -81,9 +81,25 @@ s = await state();
 assert.equal(s.lastAction, "shoot");
 assert.ok(s.lastShot.speed > 20);
 assert.equal(s.ball.owner, null);
+// Switching is defensive: own-team possession persists during shot/pass flight.
+await page.evaluate(() => {
+  const m = window.__test.match;
+  const opponent = m.players[20];
+  Object.assign(m.ball, {
+    owner: opponent.id,
+    lastTeam: 1,
+    x: opponent.x,
+    z: opponent.z,
+    y: 0.11,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+  });
+  window.advanceTime(0);
+});
 await page.keyboard.press("KeyQ");
 assert.equal((await state()).lastAction, "switch");
-await page.keyboard.press("KeyK");
+await page.keyboard.press("KeyX");
 assert.equal((await state()).lastAction, "tackle");
 await page.evaluate(() => {
   let m = window.__test.match;

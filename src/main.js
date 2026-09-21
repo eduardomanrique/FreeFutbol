@@ -6,14 +6,24 @@ import "@fontsource/dm-sans/latin-500.css";
 import "@fontsource/dm-sans/latin-700.css";
 import "./style.css";
 import { OnlineClient } from "./network/client.js";
-import { Match } from "./simulation.js";
+import { MatchSession, verifyReplay } from "./core/session.js";
 import { Stadium } from "./scene.js";
 import { TouchInput } from "./touch.js";
 import { possessionTeam } from "./possession.js";
 import { ControllerInput } from "./gamepad.js";
 import { Calibration, CALIBRATION_STEPS } from "./calibration.js";
 const $ = (id) => document.getElementById(id);
-const match = new Match();
+const sessionSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+const session = new MatchSession({
+  seed: sessionSeed,
+  record: true,
+  multiplayer: false,
+  runtime: navigator.userAgent,
+});
+const match = session.match;
+const SAVE_KEY = "campo-session-save-v1";
+const MAX_SAVE_BYTES = 4 * 1024 * 1024;
+const MAX_REPLAY_BYTES = 32 * 1024 * 1024;
 let stadium;
 try {
   const assets = await loadAthleteAssets();
@@ -161,7 +171,7 @@ document.addEventListener("fullscreenchange", mobileLayout);
 mobileLayout();
 
 function gameAction(method, ...args) {
-  if (!online.active) return match[method](...args);
+  if (!online.active) return session.action(method, args);
   if (method === "beginAction") return online.action("begin", args[0]);
   if (method === "releaseAction") return online.action("release");
   if (method === "switchPlayer") return online.action("switch");
@@ -234,6 +244,135 @@ function setPlaying(on) {
       document.exitFullscreen?.().catch(() => {});
   }
 }
+function byteLength(text) {
+  return new TextEncoder().encode(text).byteLength;
+}
+function homeSessionStatus(message, error = false) {
+  let status = $("session-status");
+  if (!status) {
+    status = document.createElement("p");
+    status.id = "session-status";
+    status.className = "mode-help";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    $("start-btn").insertAdjacentElement("afterend", status);
+  }
+  status.textContent = message;
+  status.dataset.error = error ? "true" : "false";
+}
+function readSavedSession() {
+  try {
+    const text = localStorage.getItem(SAVE_KEY);
+    if (!text) return null;
+    if (byteLength(text) > MAX_SAVE_BYTES)
+      throw new Error("O arquivo salvo excede o limite de 4 MB.");
+    const value = JSON.parse(text);
+    if (!value || typeof value !== "object" || !value.checkpoint)
+      throw new Error("O arquivo salvo está incompleto.");
+    return value;
+  } catch (error) {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {}
+    homeSessionStatus(
+      error.message || "Não foi possível ler a partida salva.",
+      true,
+    );
+    return null;
+  }
+}
+function updateContinueButton() {
+  let button = $("continue-saved");
+  const saved = readSavedSession();
+  document.body.classList.toggle("has-saved-session", !!saved);
+  if (!saved) {
+    button?.remove();
+    return;
+  }
+  if (!button) {
+    button = document.createElement("button");
+    button.id = "continue-saved";
+    button.className = "secondary";
+    button.textContent = "Continuar partida salva";
+    button.addEventListener("click", continueSaved);
+    $("start-btn").insertAdjacentElement("afterend", button);
+  }
+  button.hidden = $("game-mode").value === "online";
+}
+function leaveOfflineToHome() {
+  closeModal(false);
+  match.mode = "home";
+  setPlaying(false);
+  updateContinueButton();
+}
+function continueSaved() {
+  const saved = readSavedSession();
+  if (!saved) return;
+  try {
+    session.restore(saved.checkpoint);
+    keys.clear();
+    controller.suspend();
+    shotSource = null;
+    shotReleaseDelay = null;
+    closeModal(false);
+    setPlaying(true);
+    updateHUD();
+  } catch (error) {
+    homeSessionStatus(
+      error.message || "Não foi possível continuar a partida salva.",
+      true,
+    );
+  }
+}
+function saveSession() {
+  try {
+    const payload = {
+      version: 1,
+      seed: session.seed,
+      savedAt: Date.now(),
+      checkpoint: session.checkpoint(),
+    };
+    const text = JSON.stringify(payload);
+    if (byteLength(text) > MAX_SAVE_BYTES)
+      throw new Error("A partida salva excede o limite de 4 MB.");
+    localStorage.setItem(SAVE_KEY, text);
+    leaveOfflineToHome();
+  } catch (error) {
+    const status = $("save-status");
+    if (status)
+      status.textContent = error.message || "Não foi possível salvar.";
+    else homeSessionStatus(error.message || "Não foi possível salvar.", true);
+  }
+}
+function exportReplay() {
+  try {
+    const text = JSON.stringify(session.exportReplay());
+    if (byteLength(text) > MAX_REPLAY_BYTES)
+      throw new Error("O replay excede o limite de 32 MB.");
+    const url = URL.createObjectURL(
+      new Blob([text], { type: "application/json" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `campo-replay-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    const status = $("save-status");
+    if (status) status.textContent = "Replay exportado.";
+  } catch (error) {
+    const status = $("save-status");
+    if (status)
+      status.textContent =
+        error.message || "Não foi possível exportar o replay.";
+    else
+      homeSessionStatus(
+        error.message || "Não foi possível exportar o replay.",
+        true,
+      );
+  }
+}
 function updateModeDescription() {
   const isOnline = $("game-mode").value === "online";
   document.body.classList.toggle("online-mode", isOnline);
@@ -258,6 +397,7 @@ function updateModeDescription() {
     "aria-label",
     training ? "Duração ignorada na Arena de treino" : "Duração da partida",
   );
+  updateContinueButton();
 }
 function start() {
   mobileFullscreen();
@@ -269,7 +409,7 @@ function start() {
   controller.suspend();
   shotSource = null;
   closeModal(false);
-  match.start(
+  session.start(
     Number($("duration").value),
     $("difficulty").value,
     $("game-mode").value === "training",
@@ -331,7 +471,7 @@ function showModal(type) {
   if (type === "pause") {
     $("modal-title").textContent = "Respira. O jogo espera.";
     body =
-      '<p class="modal-note">A partida está pausada.</p><button id="resume" class="primary">Voltar ao jogo <span>→</span></button><button id="pause-settings" class="secondary">Configurações</button><button id="pause-controls" class="secondary">Controles</button><button id="restart" class="secondary">Reiniciar partida</button><button id="leave" class="secondary">Sair para o início</button>';
+      '<p class="modal-note">A partida está pausada.</p><button id="resume" class="primary">Voltar ao jogo <span>→</span></button><button id="pause-settings" class="secondary">Configurações</button><button id="pause-controls" class="secondary">Controles</button><button id="restart" class="secondary">Reiniciar partida</button><button id="save-game" class="secondary">Salvar e sair</button><button id="export-replay" class="secondary">Exportar replay JSON</button><button id="leave" class="secondary">Sair para o início</button><p id="save-status" class="modal-note" role="status" aria-live="polite"></p>';
   }
   if (type === "calibration") {
     calibration = new Calibration();
@@ -368,6 +508,8 @@ function showModal(type) {
   });
   if (online.active) {
     $("restart")?.remove();
+    $("save-game")?.remove();
+    $("export-replay")?.remove();
     if (type === "pause") {
       $("modal-title").textContent = "Menu da partida";
       $("modal-body").querySelector(".modal-note").textContent =
@@ -393,6 +535,8 @@ function showModal(type) {
   if ($("camera")) $("camera").value = stadium.cameraMode;
   $("pause-settings")?.addEventListener("click", () => showModal("settings"));
   $("pause-controls")?.addEventListener("click", () => showModal("controls"));
+  $("save-game")?.addEventListener("click", saveSession);
+  $("export-replay")?.addEventListener("click", exportReplay);
   $("resume")?.addEventListener("click", () => {
     mobileFullscreen();
     closeModal();
@@ -407,6 +551,7 @@ function showModal(type) {
     match.mode = "home";
     match.resetPlayers();
     setPlaying(false);
+    updateContinueButton();
   });
   ($("resume") ?? $("restart") ?? $("close-modal")).focus();
 }
@@ -550,7 +695,7 @@ function step(dt) {
     if (shotReleaseDelay >= 0.065) releaseShot();
   }
   if (online.active) online.update(dt, input, match);
-  else match.update(dt, input);
+  else session.step(input);
   hudAccumulator += dt;
   if (hudAccumulator > 0.075) {
     updateHUD();
@@ -665,6 +810,8 @@ if (new URLSearchParams(location.search).has("test"))
     stadium,
     online,
     step: (ms) => window.advanceTime(ms),
+    session,
+    verifyReplay,
   };
 let last = performance.now(),
   accumulator = 0,
@@ -830,7 +977,7 @@ function pollController(now) {
 }
 function releaseShot() {
   if ((match.charging || online.active) && match.mode === "playing") {
-    if (!online.active) match.aimAction(readInput());
+    if (!online.active) session.action("aimAction", [readInput()]);
     const power = Math.max(
       match.charge,
       Math.min(1, (performance.now() - shotStartedAt) / 900),

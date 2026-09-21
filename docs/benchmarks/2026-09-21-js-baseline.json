@@ -1,0 +1,52 @@
+{
+  "date": "2026-09-21T11:08:31.917Z",
+  "node": "v20.19.4",
+  "cpu": "Apple M3 Pro",
+  "note": "Local sequential single-thread simulation plus JSON serialization. Includes one level-1 deflate per snapshot. No sockets, TLS, workers or competing VPS load; not a production capacity guarantee.",
+  "results": [
+    {
+      "matches": 1,
+      "simulatedSeconds": 10,
+      "wallMs": 529,
+      "oneCorePercent": 5.3,
+      "aggregateTickP95Ms": 1.098,
+      "aggregateTickP99Ms": 1.663,
+      "snapshotBytes": 38705,
+      "compressedSnapshotBytes": 8801,
+      "outgoingKBpsPerMatchTwoClients": 352,
+      "processRssMB": 218
+    },
+    {
+      "matches": 4,
+      "simulatedSeconds": 10,
+      "wallMs": 1357,
+      "oneCorePercent": 13.6,
+      "aggregateTickP95Ms": 3.348,
+      "aggregateTickP99Ms": 4.446,
+      "snapshotBytes": 38626,
+      "compressedSnapshotBytes": 8731,
+      "outgoingKBpsPerMatchTwoClients": 349,
+      "processRssMB": 237
+    },
+    {
+      "matches": 8,
+      "simulatedSeconds": 10,
+      "wallMs": 2299,
+      "oneCorePercent": 23,
+      "aggregateTickP95Ms": 6.005,
+      "aggregateTickP99Ms": 7.266,
+      "snapshotBytes": 38525,
+      "compressedSnapshotBytes": 8669,
+      "outgoingKBpsPerMatchTwoClients": 347,
+      "processRssMB": 242
+    }
+  ],
+  "sourceCommit": "84fb3d59b0a4a6c5a90815ab1238280204c22351",
+  "scope": "Exploratory existing JavaScript benchmark; rerun after concurrent tests/build finished. One run, unseeded scenarios, 10 simulated seconds. Not an engine comparison or capacity test.",
+  "cautions": [
+    "oneCorePercent uses wall time, not measured CPU time.",
+    "RSS is the whole process after sequential groups and is not per-match memory.",
+    "Compressed traffic is an estimate produced by the benchmark; it is not observed transport traffic.",
+    "No TLS, sockets, worker overhead, or 22-client fanout."
+  ]
+}

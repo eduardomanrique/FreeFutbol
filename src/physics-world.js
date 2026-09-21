@@ -252,6 +252,67 @@ export class FootballPhysics {
   dispose() {
     this.world.free();
   }
+  checkpoint() {
+    return {
+      version: RAPIER.version(),
+      world: Array.from(this.world.takeSnapshot()),
+      ball: this.ball.handle,
+      ballCollider: this.ballCollider.handle,
+      players: this.players.map(({ body, collider }) => [
+        body.handle,
+        collider.handle,
+      ]),
+      prepared: this.prepared,
+      steps: this.steps,
+    };
+  }
+  static fromCheckpoint(data) {
+    if (
+      !data ||
+      data.version !== RAPIER.version() ||
+      !Array.isArray(data.world) ||
+      !data.world.length ||
+      data.world.length > 1024 * 1024 ||
+      data.world.some((v) => !Number.isInteger(v) || v < 0 || v > 255) ||
+      !Array.isArray(data.players) ||
+      data.players.length > 22 ||
+      !Number.isSafeInteger(data.steps) ||
+      data.steps < 0 ||
+      typeof data.prepared !== "boolean"
+    )
+      throw Error("Incompatible or invalid physics checkpoint");
+    const world = RAPIER.World.restoreSnapshot(new Uint8Array(data.world));
+    if (!world) throw Error("Unable to restore physics");
+    try {
+      const body = (handle) => {
+        if (!Number.isFinite(handle)) throw Error("Invalid rigid body handle");
+        const value = world.getRigidBody(handle);
+        if (!value) throw Error("Missing rigid body");
+        return value;
+      };
+      const collider = (handle) => {
+        if (!Number.isFinite(handle)) throw Error("Invalid collider handle");
+        const value = world.getCollider(handle);
+        if (!value) throw Error("Missing collider");
+        return value;
+      };
+      const physics = Object.create(FootballPhysics.prototype);
+      physics.world = world;
+      physics.ball = body(data.ball);
+      physics.ballCollider = collider(data.ballCollider);
+      physics.players = data.players.map((pair) => {
+        if (!Array.isArray(pair) || pair.length !== 2)
+          throw Error("Invalid player handles");
+        return { body: body(pair[0]), collider: collider(pair[1]) };
+      });
+      physics.prepared = data.prepared;
+      physics.steps = data.steps;
+      return physics;
+    } catch (error) {
+      world.free();
+      throw error;
+    }
+  }
   snapshot() {
     return {
       engine: "Rapier",

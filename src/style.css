@@ -115,6 +115,27 @@ nav {
 .nav.active {
   color: #fff;
 }
+.lab-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+.lab-mobile-link {
+  display: none;
+}
+@media (max-width: 850px) {
+  .lab-link {
+    display: none;
+  }
+  .lab-mobile-link {
+    display: block;
+    padding: 12px 0 0;
+    color: var(--mint);
+    text-align: center;
+    text-decoration: none;
+    font-size: 11px;
+  }
+}
 .nav.active:after {
   content: "";
   height: 2px;
@@ -1462,4 +1483,15 @@ body.mobile:not(.playing) .match-card {
   width: min(100%, 420px);
   max-height: none;
   margin: 0 auto;
+}
+
+/* Keep the extra resume action clear of the controller status/footer. */
+body.has-saved-session:not(.mobile):not(.playing) .match-card {
+  top: 120px;
+  max-height: calc(100dvh - 260px);
+  overflow-y: auto;
+}
+#continue-saved {
+  width: 100%;
+  margin-top: 10px;
 }

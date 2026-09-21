@@ -215,3 +215,14 @@ test("ginga follows the cut side, stays bounded, and settles when play stops", (
     "opposite cuts have opposite hip rotation",
   );
 });
+
+test("AI queued actions keep body expression finite", () => {
+  const { m, p } = setup();
+  m.queueAIAction(p, "pass", p.x + 4, p.z, 0.35);
+  stepLocomotion(p, 0, 0, 1 / 120);
+  assert.ok(
+    Object.values(p.locomotion.expression).every(Number.isFinite),
+    JSON.stringify(p.locomotion.expression),
+  );
+  m.physics.dispose();
+});

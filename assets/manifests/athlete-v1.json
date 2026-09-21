@@ -1,0 +1,321 @@
+{
+  "schema": "athlete-v1",
+  "inventoryDate": "2026-09-21",
+  "provenance": {
+    "downloadDate": null,
+    "downloadDateNote": "The original download date is unknown; the CREDITS file records source access on 2026-09-17.",
+    "accessDate": "2026-09-17",
+    "creditsPath": "public/assets/athlete/CREDITS.md",
+    "sources": [
+      {
+        "id": "quaternius-base-characters",
+        "url": "https://quaternius.com/packs/universalbasecharacters.html",
+        "downloadUrl": "https://quaternius.itch.io/universal-base-characters",
+        "license": "CC0-1.0",
+        "creditsEvidence": "CREDITS.md:7 names Universal Base Characters Standard and identifies the official free download and its character, hair and texture assets."
+      },
+      {
+        "id": "quaternius-animation-library",
+        "url": "https://quaternius.com/packs/universalanimationlibrary.html",
+        "downloadUrl": "https://github.com/J-Ponzo/gltf-universal-animation-library",
+        "license": "CC0-1.0",
+        "creditsEvidence": "CREDITS.md:8 names Universal Animation Library Standard and identifies the glTF redistribution and CC0 license."
+      }
+    ]
+  },
+  "licenseReview": {
+    "manifestPurpose": "Inventory for technical and provenance review; it is not automatic legal approval.",
+    "humanApproval": false,
+    "projectLicense": {
+      "status": "pending-human-review",
+      "note": "No project code license was identified in this inventory. CC0 asset notices do not license project code or procedural generation automatically."
+    },
+    "projectAuthoredProceduralFiles": [
+      {
+        "path": "public/assets/athlete/motion.json",
+        "status": "pending-human-review",
+        "reason": "Generated data combines retargeted CC0 motion with a CAMPO-authored football kick sequence."
+      },
+      {
+        "path": "public/assets/athlete/poses.bin",
+        "status": "pending-human-review",
+        "reason": "Generated pose data combines retargeted CC0 motion with a CAMPO-authored football kick sequence."
+      },
+      {
+        "path": "public/assets/athlete/CREDITS.md",
+        "status": "pending-human-review",
+        "reason": "Project-authored provenance documentation; no separate project license is asserted."
+      }
+    ]
+  },
+  "roots": ["assets/source/athlete", "public/assets/athlete"],
+  "rig": {
+    "runtimeGltf": "public/assets/athlete/athlete.gltf",
+    "motion": "public/assets/athlete/motion.json",
+    "poses": "public/assets/athlete/poses.bin",
+    "boneCompatibility": "motion.json bones must exactly match the first skin joints in athlete.gltf, in order.",
+    "poseLayout": "Float32 little-endian; one position (3) and quaternion (4) per bone per frame."
+  },
+  "gltfPolicy": {
+    "optionalMissingLocalUris": {
+      "assets/source/athlete/Superhero_Male_FullBody.gltf": [
+        {
+          "section": "images",
+          "uri": "T_Hair_1_Normal_png.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Hair_1_BaseColor.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Eye_Normal_png.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Eye_Brown.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Superhero_Male_Normal.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Superhero_Male_Dark.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        },
+        {
+          "section": "images",
+          "uri": "T_Superhero_Male_Roughness.png",
+          "reason": "Source material maps are omitted from the checked-in source bundle; build-motion loads this glTF with plain materials."
+        }
+      ],
+      "public/assets/athlete/Hair_Buzzed.gltf": [
+        {
+          "section": "images",
+          "uri": "T_Hair_1_Normal.png",
+          "reason": "Hair_Buzzed.gltf omits the normal map in the runtime asset, as documented in CREDITS.md:12."
+        }
+      ]
+    }
+  },
+  "assets": [
+    {
+      "path": "assets/source/athlete/AnimationLibrary_Godot_Standard.bin",
+      "role": "source-animation-binary",
+      "bytes": 1587224,
+      "sha256": "6e65377d81558333c4093dbb144a48fd19019343d82b1a3a7992a98ec0e0543c",
+      "sourceUrl": "https://github.com/J-Ponzo/gltf-universal-animation-library",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:8",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3,8",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "assets/source/athlete/LICENSE-CC0.txt",
+      "role": "license-notice",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "sourceUrl": null,
+      "sourceEvidence": "The file contains the CC0 1.0 Universal legal text; CREDITS.md:3 points to this notice.",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "assets/source/athlete/Superhero_Male_FullBody.bin",
+      "role": "source-character-binary",
+      "bytes": 720076,
+      "sha256": "459003f9745853ae562a85506a2b94dd56515c1f37728f9fa3d2ce1a3e4cd92f",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "assets/source/athlete/Superhero_Male_FullBody.gltf",
+      "role": "source-character-gltf",
+      "bytes": 30989,
+      "sha256": "e7fcea214ecf8855afbf910b50de6f9c7d1decfb71ca28bad8a4481452dafeb4",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "assets/source/athlete/library.gltf",
+      "role": "source-animation-gltf",
+      "bytes": 2459987,
+      "sha256": "0ff075c7ad6855c5c2c37a171592ee8f0d6ab2f58259e2be77a9b63dd8027765",
+      "sourceUrl": "https://github.com/J-Ponzo/gltf-universal-animation-library",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:8",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3,8",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/CREDITS.md",
+      "role": "project-provenance-documentation",
+      "bytes": 1193,
+      "sha256": "535faa070c6521fb36d3f7cc561e1eb86dcdf217aa7eb459ded2d713b0f5acef",
+      "sourceUrl": null,
+      "sourceEvidence": "Project-authored file; its own provenance statements are the evidence for the two source records above.",
+      "license": {
+        "spdx": null,
+        "status": "pending-human-review",
+        "evidence": "No project code/documentation license identified.",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/Hair_Buzzed.bin",
+      "role": "derived-runtime-hair-binary",
+      "bytes": 19892,
+      "sha256": "89992fc7a5319df6f2908e44a3b694329fac4b500629a573224702e5fdd16f77",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/Hair_Buzzed.gltf",
+      "role": "derived-runtime-hair-gltf",
+      "bytes": 1592,
+      "sha256": "211df35200ba04811b8099f9ffef34f0dd3611f81fdbc9dc7d33da10add9e395",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7,12",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7,12",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/LICENSE-CC0.txt",
+      "role": "license-notice-copy",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "sourceUrl": null,
+      "sourceEvidence": "The file contains the CC0 1.0 Universal legal text; CREDITS.md:3 points to this notice.",
+      "duplicateOf": "assets/source/athlete/LICENSE-CC0.txt",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented",
+        "evidence": "public/assets/athlete/CREDITS.md:3",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/Superhero_Male_FullBody.bin",
+      "role": "derived-runtime-character-binary-copy",
+      "bytes": 720076,
+      "sha256": "459003f9745853ae562a85506a2b94dd56515c1f37728f9fa3d2ce1a3e4cd92f",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7,12",
+      "duplicateOf": "assets/source/athlete/Superhero_Male_FullBody.bin",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7,12",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/T_Eye_Brown.png",
+      "role": "derived-runtime-eye-texture",
+      "bytes": 35958,
+      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/T_Hair_1_BaseColor.png",
+      "role": "derived-runtime-hair-texture",
+      "bytes": 1570376,
+      "sha256": "bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7,12",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7,12",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/athlete.gltf",
+      "role": "derived-runtime-character-gltf",
+      "bytes": 21349,
+      "sha256": "d355743117f2a5b163fde00b01fddcd8fe3f0ce398ffe68481970e4ab2af0c2a",
+      "sourceUrl": "https://quaternius.itch.io/universal-base-characters",
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:7,12",
+      "license": {
+        "spdx": "CC0-1.0",
+        "status": "documented-derived",
+        "evidence": "public/assets/athlete/CREDITS.md:3,7,12",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/motion.json",
+      "role": "generated-motion-metadata",
+      "bytes": 73671,
+      "sha256": "0b0ce311193657ee58e81d9af37fdcaefe53bd960f9d4555a9f1ac83e4c4a75e",
+      "sourceUrl": null,
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:10,12; generated by npm run build:motion.",
+      "license": {
+        "spdx": null,
+        "status": "pending-human-review",
+        "evidence": "Mixed CC0 retargeted clips and CAMPO-authored football kick data; project license not identified.",
+        "humanApproval": false
+      }
+    },
+    {
+      "path": "public/assets/athlete/poses.bin",
+      "role": "generated-motion-poses",
+      "bytes": 367640,
+      "sha256": "4cbbdee9c0a0ca5efebf82be95f96f52e5d0bdd0ad7721a8b12d8304175af1dd",
+      "sourceUrl": null,
+      "sourceEvidence": "public/assets/athlete/CREDITS.md:10,12; generated by npm run build:motion.",
+      "license": {
+        "spdx": null,
+        "status": "pending-human-review",
+        "evidence": "Mixed CC0 retargeted clips and CAMPO-authored football kick data; project license not identified.",
+        "humanApproval": false
+      }
+    }
+  ]
+}

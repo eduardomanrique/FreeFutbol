@@ -1,6 +1,7 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
-import { Match } from "../src/simulation.js";
+import { randomBytes } from "node:crypto";
+import { MatchSession } from "../src/core/session.js";
 import {
   TICK_RATE,
   SNAPSHOT_RATE,
@@ -8,8 +9,14 @@ import {
   renderState,
   encodeState,
 } from "../shared/protocol.js";
-const match = new Match({ multiplayer: true, headless: true });
-match.start(workerData.duration, "normal");
+const session = new MatchSession({
+  seed: randomBytes(4).readUInt32LE(),
+  multiplayer: true,
+  record: false,
+  runtime: `Node ${process.version}`,
+});
+const match = session.match;
+session.start(workerData.duration, "normal");
 let tick = 0,
   paused = true,
   last = performance.now(),
@@ -26,7 +33,8 @@ let busyMs = 0,
 function neutralize(team) {
   inputs[team] = {};
   queues[team] = [];
-  if (!neutral[team]) match.withTeam(team, () => match.cancelAction());
+  if (!neutral[team])
+    match.withTeam(team, () => session.action("cancelAction"));
   neutral[team] = true;
 }
 parentPort.on("message", (message) => {
@@ -65,17 +73,18 @@ function simulate() {
         acks[team] = input.seq;
         inputs[team] = input;
         neutral[team] = false;
-        match.aimAction(input);
+        session.action("aimAction", [input]);
         for (const event of input.events) {
-          if (event.type === "begin") match.beginAction(event.action, input);
+          if (event.type === "begin")
+            session.action("beginAction", [event.action, input]);
           if (event.type === "release")
-            match.releaseAction(match.charge, input.finesse);
+            session.action("releaseAction", [match.charge, input.finesse]);
           if (event.type === "switch") {
-            match.cancelAction();
-            match.switchPlayer();
+            session.action("cancelAction");
+            session.action("switchPlayer");
           }
-          if (event.type === "tackle") match.tackle();
-          if (event.type === "slide") match.tackle(true);
+          if (event.type === "tackle") session.action("tackle");
+          if (event.type === "slide") session.action("tackle", [true]);
           if (event.type === "cancel") neutralize(team);
         }
       }
@@ -84,7 +93,7 @@ function simulate() {
         neutralize(team);
     });
   }
-  match.update(1 / TICK_RATE, inputs[0], inputs[1]);
+  session.step(inputs[0], inputs[1]);
   tick++;
 }
 const timer = setInterval(() => {

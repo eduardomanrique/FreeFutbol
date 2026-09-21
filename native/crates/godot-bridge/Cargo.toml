@@ -1,0 +1,12 @@
+[package]
+name = "campo-godot"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+campo-core = { path = "../game-core" }
+godot = { version = "=0.5.5", default-features = false, features = ["api-4-6"] }

@@ -1,0 +1,25 @@
+# Responsável inicial identificado pelo remoto origin.
+# Confirmar acesso write e formar equipes antes de exigir revisão por domínio.
+# Este arquivo não configura rulesets nem obriga duas aprovações.
+* @eduardomanrique
+
+# A política é sensível; alterações também precisam de revisão.
+/.github/ @eduardomanrique
+/AGENTS.md @eduardomanrique
+/CONTRIBUTING.md @eduardomanrique
+/docs/adr/ @eduardomanrique
+
+# Áreas atuais. Substituir por equipes reais, sem inventar nomes de organizações.
+/src/simulation.js @eduardomanrique
+/src/physics-world.js @eduardomanrique
+/src/ball-physics.js @eduardomanrique
+/src/tactics.js @eduardomanrique
+/src/motion-matching.js @eduardomanrique
+/shared/ @eduardomanrique
+/server/ @eduardomanrique
+/deploy/ @eduardomanrique
+/assets/ @eduardomanrique
+/public/assets/ @eduardomanrique
+
+# Nova versão nativa; revisão de núcleo/FFI e dependências é obrigatória antes do merge.
+/native/ @eduardomanrique

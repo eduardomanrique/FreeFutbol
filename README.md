@@ -1,6 +1,26 @@
-# CAMPO 26
+# CAMPO
+
+## Nova versão nativa — Rust + Godot
+
+O desenvolvimento ativo passou para [native/](native/README.md), um jogo desktop novo, baseado nos aprendizados do protótipo. Para compilar e abrir: `python3 native/tools/native.py run`. O treino nativo v0.3 tem jogador, companheiro e defensor, passe rasteiro, recepção e desarme simplificados no Rust ([detalhes](docs/native-v0.3.md); [critérios de paridade](docs/paridade-nativa.md)). A web abaixo fica como legado e referência; não é o destino das novas funcionalidades.
+
+## Legado web — CAMPO 26
 
 Protótipo original de futebol 3D para navegador, com equipes fictícias. Three.js/WebGL, Rapier/WASM e Vite. Oferece partida offline, treino e multiplayer privado por código com backend autoritativo Node.js. Frontend e backend multiplayer publicados em19/09/2026.
+
+## Arquitetura de longo prazo
+
+O browser deixou de ser requisito obrigatório para a evolução do projeto; o protótipo atual continua disponível. A [proposta de arquitetura v0.1](docs/arquitetura-longo-prazo.md) compara seis alternativas, recomenda migração gradual para um núcleo independente e define o vertical slice, métricas e governança. A direção Rust/Godot começou a ser implementada em native/; o projeto completo descrito na proposta ainda não está pronto. Consulte também o [ADR inicial](docs/adr/0001-nucleo-independente.md), [CONTRIBUTING.md](CONTRIBUTING.md) e [AGENTS.md](AGENTS.md). Regras de proteção e CI remota ainda precisam de configuração no GitHub.
+
+## Etapa histórica web — núcleo v0.2
+
+O jogo principal agora usa uma sessão compartilhada com o servidor: seed explícita, passo fixo, save offline e replay técnico verificável sem renderer. No menu de pausa, salve a partida ou exporte a gravação; continue o último save pelo início. [Funcionamento, comandos e limites](docs/nucleo-v0.2.md). Essa etapa permanece apenas no legado; o produto ativo está em native/.
+
+## Laboratório de atletas — v0.1
+
+Abra **Laboratório** no menu ou acesse `asset-lab.html`. A ferramenta permite inspecionar o modelo Quaternius existente em três perfis visuais (base, variação corporal e goleiro), uniformes dos dois times, seis clips, esqueleto, velocidade e posição da animação. Exporta ficha JSON com inventário e hashes. A variação corporal não é modelo feminino; a prévia não executa física ou IK da partida. Nenhum novo asset externo foi adicionado.
+
+O [pipeline de assets v0.1](docs/asset-pipeline-v1.md) descreve a implementação, a pesquisa de modelos/animações e as lacunas para o vertical slice. `npm run validate:assets` verifica os arquivos existentes antes do build; `npm run test:assets` testa o validador e `npm run test:asset-lab` testa a interface com servidor local em execução. Validação técnica não substitui revisão humana de licença.
 
 ## Executar
 

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <meta name="theme-color" content="#142822" />
+    <title>CAMPO — Laboratório de atletas</title>
+  </head>
+  <body>
+    <header class="lab-header">
+      <a class="brand" href="./">◈ CAMPO <span>LAB / 01</span></a>
+      <a class="game-link" href="./">Voltar ao jogo ↗</a>
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">PERSONAGENS & MOVIMENTO</p>
+        <h1>O futebol começa<br />no movimento.</h1>
+        <p>
+          Uma bancada para observar o atleta, comparar uniformes e preparar a
+          próxima biblioteca de futebol.
+        </p>
+      </section>
+      <div class="workspace">
+        <aside class="controls" aria-label="Configuração do atleta">
+          <div class="section-label"><span>01</span> ATLETA</div>
+          <label for="profile">Personagem</label>
+          <select id="profile" disabled></select>
+          <p id="profile-note" class="help"></p>
+          <label for="kit">Uniforme</label>
+          <select id="kit" disabled>
+            <option value="0">Atlético · claro</option>
+            <option value="1">União · terracota</option>
+          </select>
+          <p id="kit-note" class="help">Uniformes procedurais do protótipo.</p>
+          <div class="section-label spaced"><span>02</span> MOVIMENTO</div>
+          <label for="clip">Sequência</label>
+          <select id="clip" disabled></select>
+          <p id="clip-note" class="help"></p>
+          <label for="speed">Velocidade</label>
+          <select id="speed" disabled>
+            <option value="0.25">0,25× · detalhe</option>
+            <option value="0.5">0,5× · lenta</option>
+            <option value="1" selected>1× · original</option>
+          </select>
+          <label class="check"
+            ><input type="checkbox" id="skeleton" disabled /> Mostrar
+            esqueleto</label
+          >
+          <button id="reset-camera" class="secondary" disabled>
+            Restaurar câmera
+          </button>
+        </aside>
+        <section class="viewer" aria-label="Visualização 3D">
+          <div class="viewer-top">
+            <span id="athlete-name">Carregando atleta…</span
+            ><span class="badge">PRÉVIA VISUAL</span>
+          </div>
+          <div
+            id="stage"
+            aria-label="Arraste para girar a câmera, use a roda para aproximar"
+          ></div>
+          <div id="loading" role="status">
+            Preparando modelo e movimentos locais…
+          </div>
+          <div class="viewer-caption">
+            <span>Arraste para girar · role para aproximar</span
+            ><span>Y ↑ · metros</span>
+          </div>
+          <div class="transport">
+            <button id="play" disabled aria-label="Pausar animação">
+              Pausar
+            </button>
+            <button id="restart" disabled aria-label="Reiniciar animação">
+              ↺
+            </button>
+            <label class="sr-only" for="timeline">Posição da animação</label>
+            <input
+              id="timeline"
+              type="range"
+              min="0"
+              max="1"
+              step="0.001"
+              value="0"
+              disabled
+            />
+            <output id="time">0,00 s</output>
+          </div>
+        </section>
+        <aside class="facts" aria-label="Ficha do asset">
+          <div class="section-label"><span>03</span> FICHA DO ASSET</div>
+          <h2>Um rig.<br />Várias possibilidades.</h2>
+          <dl>
+            <div>
+              <dt>Base</dt>
+              <dd>Quaternius</dd>
+            </div>
+            <div>
+              <dt>Rig</dt>
+              <dd id="bones">—</dd>
+            </div>
+            <div>
+              <dt>Triângulos exibidos</dt>
+              <dd id="triangles">—</dd>
+            </div>
+            <div>
+              <dt>Biblioteca</dt>
+              <dd id="clip-count">—</dd>
+            </div>
+            <div>
+              <dt>Fontes Quaternius</dt>
+              <dd>CC0 1.0</dd>
+            </div>
+          </dl>
+          <p class="help">
+            A base e os clips gerais são CC0. Gestos e materiais próprios do
+            projeto têm licença de código ainda a formalizar.
+          </p>
+          <a
+            class="source"
+            href="https://quaternius.com/packs/universalbasecharacters.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Ver fonte original ↗</a
+          >
+          <a
+            class="source"
+            href="./assets/athlete/CREDITS.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Créditos e modificações ↗</a
+          >
+          <button id="export" class="secondary" disabled>
+            Exportar ficha de revisão ↓
+          </button>
+          <p class="help">
+            A ficha inclui seleção e inventário. Não substitui aprovação de
+            licença ou validação de contato físico.
+          </p>
+        </aside>
+      </div>
+      <section class="coverage">
+        <div>
+          <p class="eyebrow">PRÓXIMA ETAPA</p>
+          <h2>O que falta para o futebol.</h2>
+        </div>
+        <p>
+          Este laboratório mostra os seis clips existentes, sem IK ou física de
+          partida. Os movimentos esportivos precisam de autoria e validação
+          próprias.
+        </p>
+        <div id="coverage-list"></div>
+      </section>
+    </main>
+    <footer>
+      CAMPO / FreeFutbol · Laboratório de assets v0.1 · Conteúdo carregado
+      localmente
+    </footer>
+    <script type="module" src="/src/asset-lab.js"></script>
+  </body>
+</html>

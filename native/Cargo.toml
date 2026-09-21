@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/game-core", "crates/godot-bridge", "crates/server"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

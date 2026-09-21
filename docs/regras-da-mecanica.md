@@ -2,6 +2,8 @@
 
 Documento de referência, atualizado em 19/09/2026. As regras mais recentes prevalecem sobre decisões antigas. “Usuário” identifica requisitos pedidos na conversa; “implementação” identifica calibrações escolhidas no projeto. Os números são parâmetros de gameplay, não medições de atletas reais.
 
+Atualização de escopo em 21/09/2026: browser deixou de ser requisito obrigatório para as versões futuras. A implementação descrita abaixo continua sendo o protótipo web atual; a [arquitetura de longo prazo](arquitetura-longo-prazo.md) é uma proposta em avaliação e não altera as mecânicas existentes.
+
 ## Escopo e prioridades — usuário
 
 Jogo de futebol para navegador, com modo local contra IA e treino. Em 19/09 o usuário autorizou implementar o backend autoritativo e o multiplayer privado; o modo online local está descrito em [backend.md](backend.md). Aparência, física e performance são centrais. Referência de qualidade: futebol moderno de videogame; isso não significa que o protótipo já tenha essa fidelidade. A torcida não precisa de animação. Preferir movimentos humanos com joelhos, equilíbrio, transferência de peso e apoio dos pés, evitando deslizar pelo chão. Não publicar mudanças sem um pedido explícito de deploy (regra atual, substitui autorização anterior).

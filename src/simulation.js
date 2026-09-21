@@ -38,7 +38,7 @@ import {
   receptionRoll,
   receptionContact,
 } from "./reception.js";
-import { MotionController, RootMotionWarp } from "./motion-matching.js";
+import { RootMotionWarp } from "./core/root-motion-warp.js";
 import { FootballPhysics } from "./physics-world.js";
 import { planBallReach } from "./interactions.js";
 import {
@@ -177,9 +177,7 @@ export class Match {
   }
   attachMotionLibrary(library) {
     this.motionLibrary = library;
-    this.players.forEach(
-      (p) => (p.motion = new MotionController(library, p.id)),
-    );
+    this.players.forEach((p) => (p.motion = library.createController(p.id)));
   }
   resetPlayers(kickTeam = 0) {
     this.setPiece = null;
@@ -541,6 +539,10 @@ export class Match {
     p.ballAction = {
       type,
       stage: "pending",
+      // Keep the same approach metadata as player-created actions. The body
+      // expression and follow-through use it while an AI action is pending
+      // and immediately after contact.
+      approachSpeed: length(p.vx, p.vz),
       power,
       aim,
       heading: p.locomotion.heading,

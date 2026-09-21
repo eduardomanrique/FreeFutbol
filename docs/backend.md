@@ -109,3 +109,7 @@ Frontend e backend publicados usam protocolo1. O script antigo `activate-vps.sh`
 ### Release publicado e validação
 
 Frontend20260920-960c5ccb638f; backend20260920-da3b2194709c. Containers saudáveis, healthchecks HTTPS principal/www com protocolo1. Teste público de dois navegadores passou: sala, times, chute, movimento, troca, menu, recarga, interrupção/reconexão, saída e viewport mobile. Sem erros de página no teste de frontend. Backup em `/opt/futebol/deploy-backups/stack-20260920-960c5ccb638f`. Limites iniciais:8 salas e2 partidas simultâneas. Não representa benchmark de capacidade do VPS.
+
+## Sessão compartilhada (v0.2)
+
+O worker usa MatchSession (`src/core/session.js`), com seed gerada por `node:crypto`, PRNG serializável e passo fixo de 120 Hz. O cliente offline usa a mesma implementação. A gravação fica desativada no servidor (`record: false`); não há novos endpoints de importação de save/replay, e o protocolo de snapshots permanece compatível. [Contrato e limites do núcleo](nucleo-v0.2.md).

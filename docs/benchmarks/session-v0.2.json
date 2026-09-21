@@ -1,0 +1,80 @@
+{
+  "date": "2026-09-21T12:31:07.769Z",
+  "cpu": "Apple M3 Pro",
+  "node": "v20.19.4",
+  "note": "Sequential local microbenchmark, 600 warmup + 1200 measured ticks. Match baseline vs session wrapper, same seed and inputs; no rendering, sockets, workers or serialization. Not production capacity.",
+  "report": [
+    {
+      "trial": 0,
+      "adapter": "Match",
+      "ticks": 1200,
+      "totalMs": 200.62830399999962,
+      "p95": 0.43104099999999335,
+      "p99": 0.7567500000000109
+    },
+    {
+      "trial": 0,
+      "adapter": "MatchSession-no-record",
+      "ticks": 1200,
+      "totalMs": 150.42558400000007,
+      "p95": 0.2647499999999354,
+      "p99": 0.4796670000000631
+    },
+    {
+      "trial": 0,
+      "adapter": "MatchSession-record",
+      "ticks": 1200,
+      "totalMs": 143.88684099999693,
+      "p95": 0.238666999999964,
+      "p99": 0.4587500000000091
+    },
+    {
+      "trial": 1,
+      "adapter": "Match",
+      "ticks": 1200,
+      "totalMs": 116.04209600000786,
+      "p95": 0.1744579999999587,
+      "p99": 0.397083000000066
+    },
+    {
+      "trial": 1,
+      "adapter": "MatchSession-no-record",
+      "ticks": 1200,
+      "totalMs": 111.05862099999877,
+      "p95": 0.1666659999998501,
+      "p99": 0.3332909999999174
+    },
+    {
+      "trial": 1,
+      "adapter": "MatchSession-record",
+      "ticks": 1200,
+      "totalMs": 111.62814700000285,
+      "p95": 0.16916700000001583,
+      "p99": 0.37695800000005875
+    },
+    {
+      "trial": 2,
+      "adapter": "Match",
+      "ticks": 1200,
+      "totalMs": 113.3739820000012,
+      "p95": 0.17204100000003564,
+      "p99": 0.35599999999999454
+    },
+    {
+      "trial": 2,
+      "adapter": "MatchSession-no-record",
+      "ticks": 1200,
+      "totalMs": 118.21752700000297,
+      "p95": 0.18145800000002055,
+      "p99": 0.45012500000007094
+    },
+    {
+      "trial": 2,
+      "adapter": "MatchSession-record",
+      "ticks": 1200,
+      "totalMs": 113.27070399999411,
+      "p95": 0.1692920000000413,
+      "p99": 0.41345799999999144
+    }
+  ]
+}

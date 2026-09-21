@@ -2,3 +2,11 @@ node_modules/
 dist/
 output/
 .DS_Store
+
+# Native toolchains, engine cache and generated binaries
+.tools/
+native/target/
+native/client/.godot/
+native/client/bin/
+native/build/
+native/tools/__pycache__/
