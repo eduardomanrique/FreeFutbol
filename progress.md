@@ -435,3 +435,9 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 - Ran the repository copy of the required skill browser client after the original skill path could not resolve Playwright. Inspected its offline screenshot and both final online comparison screenshots: field, players, HUD and radar render correctly.
 - Architecture, collision/ball arbitration, smoothing thresholds, reconnect limitations, reproducible benchmark commands and results documented in docs/experimento-times.md and linked from README. Backend/dev server left running for local testing. No deployment or push.
 - Final traditional-mode browser regression also passed the complete online flow, including reconnection and mobile layout.
+
+## Commit, push e deploy do experimento por time — 23 September
+- Pushed `31a27b4` to `origin/codex/client-team-simulation`.
+- Confirmed public backend healthy and zero active rooms/matches before replacing services. Packaged frontend `20260923-3676186704ca` and backend `20260923-ca8814c76126`; SHA manifests validated by the VPS activation script.
+- Joint deployment completed; both containers are healthy. The activation check confirmed every unrelated shared-stack container retained its ID. Public HTTPS health returns `{ok:true,protocol:1,rooms:0,matches:0}`, and public frontend HTML includes the team simulation selector.
+- Backup: `/opt/futebol/deploy-backups/stack-20260923-3676186704ca`. Release manifest, experiment docs and deployment notes updated; final bookkeeping commit/push pending.

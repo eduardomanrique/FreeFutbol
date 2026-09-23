@@ -1,6 +1,6 @@
 # Experimento: cada cliente simula seu time
 
-Branch: `codex/client-team-simulation`. Alteração local, ainda não publicada.
+Branch: `codex/client-team-simulation`. Publicado em23/09/2026 na release `20260923-3676186704ca` (backend `20260923-ca8814c76126`). O commit da implementação é `31a27b4`.
 
 ## Testar
 
