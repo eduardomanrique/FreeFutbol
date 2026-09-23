@@ -13,9 +13,11 @@ Abra o endereço indicado pelo Vite. Para gerar arquivos estáticos: `npm run bu
 
 ## Multiplayer online
 
+Nesta branch experimental, o menu permite escolher **Cada cliente simula seu time** (padrão) ou **Servidor simula a partida (comparação)**. O primeiro usa um relay sem simulação de física no backend. Veja [arquitetura, testes e comparação de desempenho](docs/experimento-times.md).
+
 Execute também `npm run server`, mantendo `npm run dev` aberto. Selecione **Online · por código**, crie uma sala e compartilhe o código/link. Os dois participantes confirmam **Estou pronto** e o criador inicia. Atlético ataca à direita; União, à esquerda. O menu online não pausa a partida. Sessões podem reconectar por até 30 s após a detecção de desconexão.
 
-O servidor executa física e regras a 120 Hz em workers; clientes enviam comandos por WebSocket e recebem estados a 20 Hz. A apresentação usa interpolação de 75 ms; previsão local de movimento e compensação de latência ainda não estão implementadas. Salas ficam em memória, sem cadastro ou ranking. Offline e treino não dependem do backend.
+No modo **Servidor simula a partida**, o servidor executa física e regras a 120 Hz em workers; clientes enviam comandos por WebSocket e recebem estados a 20 Hz. A apresentação usa interpolação de 75 ms; esse modo não prevê o movimento local nem compensa latência. Salas ficam em memória, sem cadastro ou ranking. Offline e treino não dependem do backend.
 
 [Operação, protocolo, limites, testes e publicação do backend](docs/backend.md). No desenvolvimento, os IPs IPv4 privados deste computador são aceitos automaticamente na porta 5173; abra esse endereço também no celular. Para domínio, HTTPS ou outra origem, configure `ALLOWED_ORIGINS` explicitamente. O multiplayer está publicado em https://kmworks.dev/futebol/.
 

@@ -1,3 +1,8 @@
+import { TeamSimulation } from "./team-simulation.js";
+import {
+  TEAM_PROTOCOL,
+  encodeTeamMessage,
+} from "../../shared/team-protocol.js";
 import { PROTOCOL_VERSION, TICK_RATE } from "../../shared/protocol.js";
 const storageKey = "campo-online-session-v1";
 export class OnlineClient {
@@ -14,12 +19,18 @@ export class OnlineClient {
     this.bytes = 0;
     this.generation = 0;
   }
-  async enter(code, duration) {
+  async enter(code, duration, networkMode = "teams") {
     if (this.active) return;
     const response = await fetch(`/futebol/api/rooms${code ? "/join" : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: PROTOCOL_VERSION, code, duration }),
+      body: JSON.stringify({
+        version: PROTOCOL_VERSION,
+        code,
+        duration,
+        networkMode,
+        teamProtocol: TEAM_PROTOCOL,
+      }),
     });
     let data;
     try {
@@ -30,6 +41,7 @@ export class OnlineClient {
       );
     }
     if (!response.ok) throw new Error(data.error || "Não foi possível entrar.");
+    this.teamSimulation = null;
     this.begin(data);
   }
   resume() {
@@ -47,6 +59,7 @@ export class OnlineClient {
     this.events = [];
     this.snapshots = [];
     this.started = false;
+    this.teamSimulation = null;
     this.seq = 0;
     this.deadline = Date.now() + 30000;
     this.retry = 0;
@@ -70,6 +83,7 @@ export class OnlineClient {
           type: "auth",
           version: PROTOCOL_VERSION,
           token: this.token,
+          teamProtocol: TEAM_PROTOCOL,
         }),
       );
     ws.onmessage = (event) => {
@@ -85,6 +99,23 @@ export class OnlineClient {
         this.snapshots = [];
         this.lastReceivedTick = -1;
         this.lastPacketAt = performance.now();
+      }
+      if (msg.type === "team-start") {
+        this.teamSimulation ||= new TeamSimulation(this.team, (packet) =>
+          this.send(packet),
+        );
+        this.teamSimulation.seq = Math.max(this.teamSimulation.seq, this.seq);
+        this.teamSimulation.receive(msg);
+        if (!this.started) {
+          this.started = true;
+          this.onStart();
+        }
+      }
+      if (msg.type === "team-frame") {
+        this.bytes += event.data.length;
+        this.teamSimulation?.receive(msg, this.rtt / 2000);
+        this.lastAck = Math.max(this.lastAck, msg.ack ?? -1);
+        this.seq = Math.max(this.seq, this.lastAck + 1);
       }
       if (msg.type === "room") {
         this.room = msg.room;
@@ -150,11 +181,14 @@ export class OnlineClient {
   }
   send(data) {
     if (this.authenticated && this.socket?.readyState === WebSocket.OPEN)
-      this.socket.send(JSON.stringify(data));
+      this.socket.send(
+        data.type === "team" ? encodeTeamMessage(data) : JSON.stringify(data),
+      );
   }
   action(type, action) {
     if (!this.active || !this.authenticated || this.room?.status !== "playing")
       return false;
+    if (this.teamSimulation) return this.teamSimulation.action(type, action);
     if (this.events.length < 12)
       this.events.push({ type, ...(action ? { action } : {}) });
     return true;
@@ -167,6 +201,16 @@ export class OnlineClient {
     if (now - (this.lastPing || 0) > 2000) {
       this.lastPing = now;
       this.send({ type: "ping", sent: now });
+    }
+    if (this.teamSimulation) {
+      this.teamSimulation.update(
+        match,
+        dt,
+        input,
+        this.authenticated && this.room?.status === "playing",
+      );
+      this.tick = Math.floor(match.elapsed * TICK_RATE);
+      return;
     }
     if (
       this.authenticated &&
@@ -283,6 +327,9 @@ export class OnlineClient {
     this.socket?.close();
     this.events = [];
     this.snapshots = [];
+    if (this.teamSimulation?.match)
+      this.teamSimulation.match.distributed = null;
+    this.teamSimulation = null;
     this.room = null;
     sessionStorage.removeItem(storageKey);
     if (wasActive) this.onEnd(reason);

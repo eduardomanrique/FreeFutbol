@@ -46,6 +46,8 @@ const online = new OnlineClient({
   onRoom(room, team) {
     $("online-code").textContent = room.code;
     $("duration").value = String(room.duration);
+    $("network-mode").value = room.networkMode;
+    $("network-mode").disabled = true;
     $("online-members").textContent = room.players
       .map(
         (p, i) =>
@@ -79,6 +81,8 @@ const online = new OnlineClient({
     shotSource = null;
     match.activeTeam = 0;
     match.multiplayer = false;
+    match.distributed = null;
+    $("network-mode").disabled = false;
     match.training = false;
     match.mode = "home";
     match.resetPlayers();
@@ -175,7 +179,11 @@ async function enterOnline(join) {
     const code = join ? $("room-code").value.trim().toUpperCase() : "";
     if (join && !/^[A-Z2-9]{6}$/.test(code))
       throw new Error("Digite o código de 6 caracteres.");
-    await online.enter(code, Number($("duration").value));
+    await online.enter(
+      code,
+      Number($("duration").value),
+      $("network-mode").value,
+    );
   } catch (error) {
     $("online-message").textContent = error.message;
   } finally {
@@ -626,6 +634,10 @@ window.render_game_to_text = () =>
       ack: online.lastAck,
       rtt: online.rtt,
       bytes: online.bytes,
+      architecture: online.room?.networkMode,
+      ballAuthority: online.teamSimulation?.authority,
+      ballEpoch: online.teamSimulation?.epoch,
+      metrics: online.teamSimulation?.stats,
     },
     controller: {
       connected: controllerState.connected,

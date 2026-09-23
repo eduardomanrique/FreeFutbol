@@ -264,6 +264,7 @@ export class Match {
     this.lastInput = {};
     this.players.forEach(initLocomotion);
     if (this.motionLibrary) this.attachMotionLibrary(this.motionLibrary);
+    this.distributed?.reset();
   }
   start(duration = 360, difficulty = "normal", training = false) {
     this.duration = duration;
@@ -772,6 +773,12 @@ export class Match {
   }
   updateBallControl(dt) {
     const b = this.ball;
+    if (
+      this.distributed &&
+      b.owner !== null &&
+      this.players[b.owner].team !== this.distributed.team
+    )
+      return;
     if (b.owner === null) return;
     const p = this.players[b.owner],
       a = p.ballAction;
@@ -811,6 +818,7 @@ export class Match {
           b.vz = impulse.vz;
           b.vy = Math.min(b.vy, 0);
           b.spin = 0;
+          this.distributed?.contact(p, "dribble");
           // Match rolling angular momentum to this discrete shoe impulse so an
           // old spin cannot undo a cut or reaccelerate a stopped ball.
           this.physics.ball.setAngvel(
@@ -896,6 +904,8 @@ export class Match {
     );
   }
   kick(p, tx, tz, speed, lift) {
+    if (this.distributed && p.team !== this.distributed.team) return;
+    this.distributed?.contact(p, "kick");
     if (this.restartRestriction?.player !== p.id)
       this.restartRestriction = null;
     if (this.setPiece?.taker === p.id) {
@@ -957,6 +967,7 @@ export class Match {
       b.vy = 0.8;
       b.lastTeam = p.team;
       this.kickCooldown = 0.17;
+      this.distributed?.contact(p, "tackle");
     }
     this.lastAction = slide ? "slide" : "tackle";
   }
@@ -971,7 +982,10 @@ export class Match {
     if (this.mode === "goal") {
       this.restartTimer -= dt;
       this.integrateBall(dt);
-      if (this.restartTimer <= 0) {
+      if (
+        this.restartTimer <= 0 &&
+        (!this.distributed || this.distributed.isBallAuthority())
+      ) {
         this.resetPlayers(this.restartTeam);
         this.mode = "playing";
         this.announce("SAÍDA DE BOLA", 1.5);
@@ -979,13 +993,21 @@ export class Match {
       return;
     }
     this.elapsed += dt;
-    if (!this.training && this.elapsed >= this.duration) {
+    if (
+      !this.training &&
+      this.elapsed >= this.duration &&
+      (!this.distributed || this.distributed.isBallAuthority())
+    ) {
       this.mode = "finished";
       this.announce("FIM DE JOGO", 99);
       return;
     }
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
-    for (const team of this.multiplayer ? [0, 1] : [0])
+    for (const team of this.distributed
+      ? [this.distributed.team]
+      : this.multiplayer
+        ? [0, 1]
+        : [0])
       this.withTeam(team, () => {
         const teamInput = team === 0 ? input : opponentInput;
         this.lastInput = { ...teamInput };
@@ -1004,7 +1026,14 @@ export class Match {
         }
       });
     if (this.setPiece) {
-      this.updateSetPiece(dt);
+      if (
+        !this.distributed ||
+        this.players[this.setPiece.taker].team === this.distributed.team
+      )
+        this.updateSetPiece(dt);
+      else
+        for (const p of this.players)
+          this.withTeam(p.team, () => p.motion?.update(p, this, dt));
       return;
     }
     let b = this.ball,
@@ -1041,6 +1070,10 @@ export class Match {
             )[0]?.id,
     );
     for (let p of this.players) {
+      if (this.distributed && p.team !== this.distributed.team) {
+        this.distributed.stepRemote(p, dt);
+        continue;
+      }
       const input = this.controls[p.team].lastInput;
       const control = this.controls[p.team];
       const defensiveAim =
@@ -1411,10 +1444,16 @@ export class Match {
       p.locomotion.lastZ = p.z;
     }
     for (const p of this.players)
-      this.withTeam(p.team, () => this.updateFirstTimeContact(p, dt));
+      if (!this.distributed || p.team === this.distributed.team)
+        this.withTeam(p.team, () => this.updateFirstTimeContact(p, dt));
     this.tryAutomaticReception(input, dt);
     this.updateGoalkeepers(dt);
-    this.physics.preparePlayers(this.players, dt, this.training);
+    this.physics.preparePlayers(
+      this.players,
+      dt,
+      this.training,
+      this.distributed?.team,
+    );
     this.withTeam(this.players[this.ball.owner]?.team ?? 0, () =>
       this.updateBallControl(dt),
     );
@@ -1426,6 +1465,7 @@ export class Match {
   updateGoalkeepers(dt) {
     const b = this.ball;
     for (const p of this.players) {
+      if (this.distributed && p.team !== this.distributed.team) continue;
       const g = p.goalkeeping;
       if (!p.keeper || !g || (this.training && p.team === 1)) continue;
       if (g.holding && b.owner === p.id) {
@@ -1499,6 +1539,7 @@ export class Match {
     const currentOwner = b.owner;
     const candidates = [];
     for (const p of this.players) {
+      if (this.distributed && p.team !== this.distributed.team) continue;
       if (p.ballAction?.firstTime) continue;
       if (
         p.keeper ||
@@ -1627,6 +1668,7 @@ export class Match {
       oldZ = b.z,
       oldY = b.y;
     this.physics.step(this, dt);
+    if (this.distributed && !this.distributed.isBallAuthority()) return;
     if (this.doubleTouch) {
       const team = this.doubleTouch.team;
       this.doubleTouch = null;
@@ -1722,6 +1764,7 @@ export class Match {
         message === "LATERAL" ? "throw" : "corner",
       );
       this.announce(message);
+      this.distributed?.reset();
       return;
     }
     this.setPiece = null;
@@ -1750,11 +1793,14 @@ export class Match {
     this.kickCooldown = 0.8;
     p.think = 0.8;
     this.announce(message);
+    this.distributed?.reset();
   }
   updateSetPiece(dt) {
     updateSetPiece(this, dt);
   }
   recordBallTouch(p) {
+    if (this.distributed && p.team !== this.distributed.team) return;
+    this.distributed?.contact(p, "contact");
     if (this.setPiece) return;
     if (
       this.restartRestriction?.player === p.id &&

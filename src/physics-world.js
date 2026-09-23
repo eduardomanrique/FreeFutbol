@@ -81,11 +81,16 @@ export class FootballPhysics {
       this.players.push({ body, collider });
     }
   }
-  preparePlayers(players, dt, training = false) {
+  preparePlayers(players, dt, training = false, localTeam = undefined) {
     this.ensurePlayers(players);
     this.prepared = true;
     players.forEach((p, i) => {
       const { body } = this.players[i];
+      const remote = localTeam !== undefined && p.team !== localTeam;
+      const type = remote
+        ? RAPIER.RigidBodyType.KinematicPositionBased
+        : RAPIER.RigidBodyType.Dynamic;
+      if (body.bodyType() !== type) body.setBodyType(type, true);
       const anchored = training && p.trainingAnchor && p.team === 1;
       const anchorX = anchored ? p.trainingAnchor.x : p.x;
       const anchorZ = anchored ? p.trainingAnchor.z : p.z;
@@ -105,6 +110,12 @@ export class FootballPhysics {
         },
         true,
       );
+      if (remote)
+        body.setNextKinematicTranslation({
+          x: p.x,
+          y: 0.9 + (p.header?.height || 0),
+          z: p.z,
+        });
       body.setLinvel(
         { x: anchored ? 0 : vx, y: 0, z: anchored ? 0 : vz },
         true,
@@ -210,6 +221,7 @@ export class FootballPhysics {
     b.spin *= Math.exp(-dt * (ground ? 1.7 : 0.45));
     if (this.prepared)
       match.players.forEach((p, i) => {
+        if (match.distributed && p.team !== match.distributed.team) return;
         const { body } = this.players[i],
           pos = body.translation(),
           v = body.linvel();

@@ -37,13 +37,19 @@ try {
       if (m.type() === "error") errors.push(m.text());
     });
   }
-  await Promise.all([a, b].map((p) => p.goto(process.env.DEPLOY_URL || "http://localhost:5173/?test")));
+  await Promise.all(
+    [a, b].map((p) =>
+      p.goto(process.env.DEPLOY_URL || "http://localhost:5173/?test"),
+    ),
+  );
   await Promise.all(
     [a, b].map((p) =>
       p.waitForFunction(() => window.render_game_to_text, { timeout: 60000 }),
     ),
   );
   await a.selectOption("#game-mode", "online");
+  if (process.env.NETWORK_MODE)
+    await a.selectOption("#network-mode", process.env.NETWORK_MODE);
   await a.click("#online-create");
   await a.waitForFunction(
     () => document.getElementById("online-code").textContent.length === 6,
@@ -131,16 +137,15 @@ try {
   await b.evaluate(() => {
     window.onlinePads[0].buttons[4] = { pressed: false, value: 0 };
   });
-  await b.waitForFunction(
-    (ack) => {
-      const s = JSON.parse(window.render_game_to_text());
-      // A previous keyboard switch may still be the last action. Wait for a
-      // fresh server acknowledgement; switching is now locked with possession.
-      return s.network.ack > ack &&
-        (s.possessionTeam === s.network.team || s.lastAction === "switch");
-    },
-    beforeControllerAck,
-  );
+  await b.waitForFunction((ack) => {
+    const s = JSON.parse(window.render_game_to_text());
+    // A previous keyboard switch may still be the last action. Wait for a
+    // fresh server acknowledgement; switching is now locked with possession.
+    return (
+      s.network.ack > ack &&
+      (s.possessionTeam === s.network.team || s.lastAction === "switch")
+    );
+  }, beforeControllerAck);
   assert.ok((await state(b)).network.ack > beforeControllerAck);
   assert.ok((await state(b)).selected >= 11);
   // Session reload reconnects to the same server-owned match and team.
@@ -169,6 +174,18 @@ try {
   );
   await a.waitForFunction(
     () => JSON.parse(window.render_game_to_text()).network.status === "playing",
+  );
+  const postReconnectAck = [
+    (await state(a)).network.ack,
+    (await state(b)).network.ack,
+  ];
+  await Promise.all(
+    [a, b].map((p, i) =>
+      p.waitForFunction(
+        (ack) => JSON.parse(window.render_game_to_text()).network.ack > ack + 2,
+        postReconnectAck[i],
+      ),
+    ),
   );
   fs.writeFileSync(
     "output/online/states.json",
