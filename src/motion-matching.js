@@ -1,3 +1,4 @@
+import { motionAction } from "./action-state.js";
 import * as T from "three";
 const clamp = T.MathUtils.clamp;
 export function timeAtDistance(clip, distance) {
@@ -168,7 +169,10 @@ export class MotionController {
     this.searchClock += dt;
     const speed = Math.hypot(p.vx, p.vz),
       charge =
-        match.charging && match.selected === p.id && match.ball.owner === p.id;
+        !!motionAction(p) &&
+        match.charging &&
+        match.selected === p.id &&
+        match.ball.owner === p.id;
     // Hysteresis prevents gait flicker around walk/run/sprint boundaries.
     this.gait =
       speed < 0.18
@@ -199,7 +203,7 @@ export class MotionController {
       Math.atan2(forwardAcceleration, 9.81) *
         (0.85 + 0.35 * (p.sprintLaunch || 0)) *
         (1 - 0.65 * this.relaxedBlend * (1 - (p.sprintLaunch || 0))),
-      p.ballAction ? -0.035 : -0.18,
+      motionAction(p) ? -0.035 : -0.18,
       0.42 + 0.12 * (p.sprintLaunch || 0),
     );
     this.driveLean =

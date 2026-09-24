@@ -1,3 +1,4 @@
+import { surfaceFor, rollingResistance } from "./surfaces.js";
 // Gameplay-calibrated SI units. Ground resistance is contact-only, distinct
 // from quadratic aerodynamic drag. Shared by live physics and reach prediction.
 export const BALL_RADIUS = 0.11;
@@ -13,7 +14,7 @@ export function stepBallMotion(b, dt) {
   b.vx = vx * c - b.vz * s;
   b.vz = vx * s + b.vz * c;
   if (grounded) {
-    const next = Math.max(0, speed - (ROLL_DECELERATION + 0.085 * speed) * dt);
+    const next = Math.max(0, speed - rollingResistance(b, speed) * dt);
     const factor = speed > 0 ? next / speed : 0;
     b.vx *= factor;
     b.vz *= factor;
@@ -31,10 +32,10 @@ export function stepBallMotion(b, dt) {
   if (b.y < BALL_RADIUS) {
     const impact = Math.max(0, -b.vy);
     b.y = BALL_RADIUS;
-    b.vy = impact > 1 ? impact * 0.48 : 0;
+    b.vy = impact > 1 ? impact * surfaceFor(b).bounce : 0;
     // Grass impact dissipates tangential energy too, but a settled ball isn't
     // charged this impact loss again every frame.
-    const retention = 1 - Math.min(0.18, impact * 0.018);
+    const retention = 1 - Math.min(0.5, impact * surfaceFor(b).impact);
     b.vx *= retention;
     b.vz *= retention;
   }

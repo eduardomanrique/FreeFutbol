@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "../shared/protocol.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
@@ -10,7 +11,7 @@ function socket(url, token, requestOrigin = origin) {
   const messages = [];
   ws.on("message", (data) => messages.push(JSON.parse(data)));
   ws.on("open", () =>
-    ws.send(JSON.stringify({ type: "auth", version: 1, token })),
+    ws.send(JSON.stringify({ type: "auth", version: PROTOCOL_VERSION, token })),
   );
   ws.sendJSON = (data) => ws.send(JSON.stringify(data));
   ws.wait = async (predicate, timeout = 12000) => {
@@ -39,7 +40,7 @@ test(
       const response = await fetch(url + "/futebol/api/" + path, {
         method: "POST",
         headers: { Origin: requestOrigin, "Content-Type": "application/json" },
-        body: JSON.stringify({ version: 1, ...data }),
+        body: JSON.stringify({ version: PROTOCOL_VERSION, ...data }),
       });
       return { status: response.status, ...(await response.json()) };
     };
@@ -156,7 +157,7 @@ test(
       const response = await fetch(url + "/futebol/api/rooms", {
         method: "POST",
         headers: { Origin: origin },
-        body: JSON.stringify({ version: 1, duration: 180 }),
+        body: JSON.stringify({ version: PROTOCOL_VERSION, duration: 180 }),
       });
       await response.json();
       assert.equal(app.rooms.size, 1);
@@ -186,7 +187,7 @@ test(
       const r = await fetch(url + "/futebol/api/" + path, {
         method: "POST",
         headers: { Origin: origin },
-        body: JSON.stringify({ version: 1, ...data }),
+        body: JSON.stringify({ version: PROTOCOL_VERSION, ...data }),
       });
       return { status: r.status, ...(await r.json()) };
     }
@@ -265,7 +266,7 @@ test("LAN origin can create, join and authenticate while unrelated origins remai
     const response = await fetch(url + "/futebol/api/" + route, {
       method: "POST",
       headers: { Origin: requestOrigin },
-      body: JSON.stringify({ version: 1, ...data }),
+      body: JSON.stringify({ version: PROTOCOL_VERSION, ...data }),
     });
     return { status: response.status, ...(await response.json()) };
   }

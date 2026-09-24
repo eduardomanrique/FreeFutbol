@@ -1463,3 +1463,251 @@ body.mobile:not(.playing) .match-card {
   max-height: none;
   margin: 0 auto;
 }
+
+/* Playground palette and mode picker. */
+:root {
+  --mint: #dcff77;
+}
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 0;
+}
+.mode-grid button {
+  text-align: left;
+  padding: 12px;
+  border: 1px solid #ffffff30;
+  border-radius: 12px;
+  background: #34345b;
+  color: #fff;
+}
+.mode-grid button[data-mode="street"] {
+  background: #674bad;
+}
+.mode-grid button[data-mode="match"] {
+  background: #315f4a;
+}
+.mode-grid button[data-mode="duel"] {
+  background: #915147;
+}
+.mode-grid button[data-mode="altinha"] {
+  background: #315a91;
+}
+.mode-grid button[data-mode="sand"] {
+  background: #795b35;
+}
+.mode-grid button[data-mode="court"] {
+  background: #226d7d;
+}
+.mode-grid button[aria-pressed="true"] {
+  border-color: #dcff77;
+  box-shadow: inset 0 0 0 1px #dcff77;
+}
+.mode-grid strong {
+  display: block;
+  font: 700 23px "Barlow Condensed";
+  letter-spacing: 1px;
+}
+.mode-grid button[data-mode="duel"] strong {
+  font-size: 20px;
+  letter-spacing: 0;
+}
+.mode-grid small {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #f0ebff;
+}
+.match-card {
+  max-height: calc(100dvh - 155px);
+  overflow-y: auto;
+  background: linear-gradient(145deg, #242841f5, #172c35f5);
+  border-radius: 22px;
+}
+.match-card .teams {
+  display: none;
+}
+body:not(.playing) h1 em {
+  color: #dcff77;
+}
+@media (max-width: 620px) {
+  body:not(.playing) .hero {
+    position: relative;
+    top: auto;
+    left: auto;
+  }
+  body:not(.playing) #home {
+    overflow-y: auto;
+  }
+  body:not(.playing) .match-card {
+    position: relative;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    width: 100%;
+    max-height: none;
+    margin-top: 16px;
+  }
+  body:not(.playing) h1 {
+    font-size: 46px;
+  }
+}
+
+.power-wrap > div {
+  position: relative;
+}
+.power-wrap.shot-bands > div {
+  background: linear-gradient(
+    to right,
+    #10261c 85%,
+    #d3a930 85% 90%,
+    #a42f32 90%
+  );
+}
+.power-wrap.shot-bands > div::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    transparent calc(85% - 1px),
+    #ffe990 calc(85% - 1px) 85%,
+    transparent 85% calc(90% - 1px),
+    #ff8c80 calc(90% - 1px) 90%,
+    transparent 90%
+  );
+}
+
+#altinha-hud {
+  position: absolute;
+  top: 92px;
+  left: 4%;
+  padding: 16px 20px;
+  background: #173d38df;
+  border-left: 4px solid #f8c96a;
+  color: #fff;
+  min-width: 220px;
+}
+#altinha-hud > span {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #f8c96a;
+}
+#altinha-points {
+  display: block;
+  font:
+    700 56px "Barlow Condensed",
+    sans-serif;
+  line-height: 1.1;
+}
+#altinha-stats {
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+#altinha-hint {
+  font-size: 11px;
+  margin: 10px 0 0;
+  color: #d9e9d6;
+}
+#altinha-power {
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+#altinha-power > div {
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 4px;
+  background: #ffffff30;
+  overflow: hidden;
+}
+#altinha-power-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #b8ef74, #ffe173, #ff9874);
+  border-radius: inherit;
+}
+.altinha-playing .scoreboard,
+.altinha-playing .player-panel,
+.altinha-playing #radar,
+.altinha-playing .power-wrap {
+  display: none !important;
+}
+.altinha-playing #event-toast {
+  top: auto;
+  bottom: 100px;
+}
+body.mobile.playing.altinha-playing #event-toast {
+  top: auto;
+  bottom: 58px;
+}
+.altinha-selected .match-card .teams {
+  display: none;
+}
+.altinha-playing .touch-stick::after {
+  content: "MOVER";
+}
+body.mobile.altinha-playing #altinha-hud {
+  top: 12px;
+  left: 12px;
+  padding: 8px 12px;
+  min-width: 160px;
+}
+body.mobile.altinha-playing #altinha-points {
+  font-size: 34px;
+}
+body.mobile.altinha-playing #altinha-hint {
+  max-width: 190px;
+  font-size: 9px;
+}
+body.mobile.altinha-playing .touch-actions {
+  grid-template-columns: repeat(2, 56px);
+}
+
+.mode-grid button[data-mode="futevolei"] {
+  --mode-color: #ed6ba7;
+  border-color: #d65390;
+  background: linear-gradient(140deg, #5c2346, #332735);
+}
+#volley-hud {
+  position: absolute;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  background: #183b40e8;
+  border: 1px solid #ed6ba7;
+  border-radius: 18px;
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.volley-playing #radar,
+.volley-playing .power-wrap {
+  display: none !important;
+}
+.volley-playing .touch-actions {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+body.mobile.volley-playing #volley-hud {
+  top: 65px;
+  font-size: 11px;
+  padding: 6px 12px;
+}
+body.mobile.volley-playing .player-panel {
+  display: none;
+}
+
+body.mobile.playing.volley-playing #event-toast {
+  top: 96px;
+  padding: 5px 12px;
+}
+body.mobile.playing.volley-playing #network-banner {
+  top: 124px;
+}
+.volley-playing .touch-stick::after {
+  content: "MOVER";
+}

@@ -1,3 +1,9 @@
+import { AltinhaEffects } from "./altinha-effects.js";
+import { predictLanding } from "./ball-landing.js";
+import { addGroundDetail } from "./surface-textures.js";
+import { PlayerEffects } from "./player-effects.js";
+import { buildPlayground } from "./playground.js";
+import { modeConfig } from "./modes.js";
 import { followCamera } from "./camera.js";
 import {
   buildSkinnedAthlete,
@@ -7,7 +13,7 @@ import { athleteGeometries, buildAthlete, animateAthlete } from "./athlete.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 const mat = (color, extra = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness: 0.88, ...extra });
+  new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
 export class Stadium {
   constructor(container, assets) {
     this.assets = assets;
@@ -20,7 +26,7 @@ export class Stadium {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.16;
+    this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#a8b6ac");
@@ -28,8 +34,8 @@ export class Stadium {
     this.camera = new THREE.PerspectiveCamera(43, 1, 0.3, 350);
     this.camera.position.set(64, 77, 88);
     this.look = new THREE.Vector3(0, 0, 0);
-    this.scene.add(new THREE.HemisphereLight("#dce8f1", "#56773c", 2.15));
-    this.sun = new THREE.DirectionalLight("#ffdfaf", 3.1);
+    this.scene.add(new THREE.HemisphereLight("#dce8f1", "#807b92", 1.6));
+    this.sun = new THREE.DirectionalLight("#ffe8ce", 2.4);
     this.sun.position.set(-52, 65, -38);
     this.sun.castShadow = true;
     Object.assign(this.sun.shadow.camera, {
@@ -45,11 +51,18 @@ export class Stadium {
     this.sun.shadow.normalBias = 0.035;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+    const beforeArena = new Set(this.scene.children);
     this.buildPitch();
     this.buildStands();
     this.buildGoals();
+    this.classicArena = this.scene.children.filter(
+      (child) => !beforeArena.has(child),
+    );
     this.buildPlayers();
     this.buildBall();
+    this.buildShotEffects();
+    this.playerEffects = new PlayerEffects(this.scene);
+    this.altinhaEffects = new AltinhaEffects(this.scene);
     this.quality = "high";
     this.cameraMode = "broadcast";
     this.resize();
@@ -142,7 +155,7 @@ export class Stadium {
     const texture = this.texture(canvas);
     const ground = this.mesh(
       new THREE.PlaneGeometry(108, 74),
-      mat("#ffffff", { map: texture }),
+      addGroundDetail(mat("#ffffff", { map: texture }), "grass", 108, 74),
       0,
       0,
       0,
@@ -437,6 +450,14 @@ export class Stadium {
       0,
     );
     this.ring.rotation.x = -Math.PI / 2;
+    this.pressRing = this.mesh(
+      new THREE.RingGeometry(0.78, 0.86, 32),
+      new THREE.MeshBasicMaterial({ color: "#55dfff", side: THREE.DoubleSide }),
+      0,
+      0.027,
+      0,
+    );
+    this.pressRing.rotation.x = -Math.PI / 2;
     this.marker = this.mesh(
       new THREE.ConeGeometry(0.24, 0.38, 3),
       new THREE.MeshBasicMaterial({ color: "#c4ff80" }),
@@ -487,6 +508,127 @@ export class Stadium {
       0,
     );
     this.ballShadow.rotation.x = -Math.PI / 2;
+    this.landingMarker = new THREE.Group();
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x0789b2,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.43, 0.51, 40),
+      material,
+    );
+    ring.rotation.x = -Math.PI / 2;
+    this.landingMarker.add(ring);
+    for (const angle of [0, Math.PI / 2]) {
+      const line = new THREE.Mesh(
+        new THREE.BoxGeometry(0.25, 0.012, 0.025),
+        material,
+      );
+      line.rotation.y = angle;
+      this.landingMarker.add(line);
+    }
+    this.landingMarker.visible = false;
+    this.scene.add(this.landingMarker);
+  }
+  setArena(id) {
+    if (this.arenaId === id) return;
+    this.arenaId = id;
+    this.classicArena.forEach((mesh) => (mesh.visible = id === "match"));
+    if (this.playground) {
+      this.scene.remove(this.playground);
+      const materials = new Set();
+      this.playground.userData.disposed = true;
+      this.playground.traverse((node) => {
+        if (node.userData.sharedVegetation) return;
+        node.geometry?.dispose();
+        if (node.material && !node.material.userData.sharedVegetation)
+          materials.add(node.material);
+      });
+      materials.forEach((m) => {
+        m.map?.dispose();
+        m.dispose();
+      });
+      this.playground = null;
+    }
+    this.scene.background.set(
+      modeConfig(id).surface === "sand" ? "#badfdf" : "#c9d5dd",
+    );
+    this.scene.fog.color.copy(this.scene.background);
+    if (id !== "match") {
+      this.playground = buildPlayground(id, modeConfig(id));
+      this.scene.add(this.playground);
+    }
+  }
+  buildShotEffects() {
+    this.effectTime = 0;
+    this.trail = Array.from({ length: 24 }, () => {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 6, 4),
+        new THREE.MeshBasicMaterial({
+          color: "#72fff0",
+          transparent: true,
+          depthWrite: false,
+        }),
+      );
+      mesh.visible = false;
+      this.scene.add(mesh);
+      return mesh;
+    });
+    this.shotBurst = new THREE.Mesh(
+      new THREE.RingGeometry(0.65, 1, 16),
+      new THREE.MeshBasicMaterial({
+        color: "#fff18a",
+        side: THREE.DoubleSide,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    this.shotBurst.rotation.x = -Math.PI / 2;
+    this.shotBurst.visible = false;
+    this.scene.add(this.shotBurst);
+  }
+  updateShotEffects(match, dt) {
+    const shot = match.lastShot;
+    if (shot !== this.effectShot) {
+      this.effectShot = shot;
+      this.effectTime = shot ? 0.65 : 0;
+      this.shotBurst.position.set(match.ball.x, 0.09, match.ball.z);
+      this.trail.forEach((p) => {
+        p.userData.life = 0;
+        p.visible = false;
+      });
+    }
+    if (match.mode === "paused") return;
+    this.effectTime = Math.max(0, this.effectTime - dt);
+    this.shotBurst.visible = this.effectTime > 0;
+    this.shotBurst.scale.setScalar(1 + (1 - this.effectTime / 0.65) * 3);
+    this.shotBurst.material.opacity = this.effectTime / 0.65;
+    const flying =
+      shot &&
+      match.ball.owner === null &&
+      Math.hypot(match.ball.vx, match.ball.vz) > 5 &&
+      match.elapsed - shot.contactAt < 2.5;
+    if (flying) {
+      const p =
+        this.trail.find((p) => !p.visible) ||
+        this.trail.reduce((a, b) =>
+          a.userData.life < b.userData.life ? a : b,
+        );
+      p.position.copy(this.ballMesh.position);
+      p.userData.life = 0.32;
+      p.visible = true;
+      p.material.color.set(shot.power > 0.7 ? "#ffae4d" : "#72fff0");
+    }
+    for (const p of this.trail) {
+      p.userData.life = Math.max(0, (p.userData.life || 0) - dt);
+      p.visible = p.userData.life > 0 && match.mode !== "home";
+      p.material.opacity = (p.userData.life / 0.32) * 0.8;
+      p.scale.setScalar(0.4 + p.userData.life * 3);
+    }
+    this.ballMesh.scale.setScalar(flying ? 1.45 : 1.18);
   }
   setQuality(q) {
     this.quality = q;
@@ -526,13 +668,20 @@ export class Stadium {
     )
       this.resize();
     let playing = match.mode !== "home";
+    this.setArena(match.variant || "match");
+    const renderPlayers = new Map(
+      match.players.map((p) => [p.renderId ?? p.id, p]),
+    );
     for (let i = 0; i < 22; i++) {
+      const player = renderPlayers.get(i);
+      this.rigs[i].root.visible = !!player;
+      if (!player) continue;
       if (this.rigs[i].type === "skinned")
-        animateSkinnedAthlete(this.rigs[i], match.players[i], match);
+        animateSkinnedAthlete(this.rigs[i], player, match);
       else
         animateAthlete(
           this.rigs[i],
-          match.players[i],
+          player,
           match,
           match.mode === "paused" ? 0 : dt,
         );
@@ -546,25 +695,99 @@ export class Stadium {
     this.ring.position.set(p.x, 0.025, p.z);
     this.marker.position.set(p.x, 2.9, p.z);
     this.ring.visible = playing;
-    this.marker.visible = playing;
+    this.marker.visible = playing && !match.field.altinha;
+    const pressing = match.players.find(
+      (q) => q.team === p.team && q.secondPress,
+    );
+    this.pressRing.visible = playing && !!pressing;
+    if (pressing) this.pressRing.position.set(pressing.x, 0.027, pressing.z);
     this.ballMesh.position.set(match.ball.x, match.ball.y, match.ball.z);
     this.ballMesh.rotation.x += (match.ball.vz * dt) / 0.11;
     this.ballMesh.rotation.z -= (match.ball.vx * dt) / 0.11;
     this.ballShadow.position.set(match.ball.x, 0.018, match.ball.z);
     this.ballShadow.material.opacity = 0.32 / (1 + match.ball.y * 0.3);
     this.ballShadow.scale.setScalar(1 + match.ball.y * 0.15);
-    followCamera(
-      this.camera,
-      this.look,
-      {
-        ball: match.ball,
-        playing,
-        wide: this.cameraMode === "tactical",
-        mobile: document.body.classList.contains("mobile"),
-        width: this.viewWidth,
-      },
-      dt,
-    );
+    const high = playing && match.ball.y > 1 && match.ball.owner == null;
+    if (
+      high &&
+      (this.landingTime == null ||
+        Math.abs(match.elapsed - this.landingTime) > 0.08 ||
+        Math.hypot(
+          match.ball.vx - (this.landingVelocity?.x || 0),
+          match.ball.vy - (this.landingVelocity?.y || 0),
+          match.ball.vz - (this.landingVelocity?.z || 0),
+        ) > 1.2)
+    ) {
+      this.landingPoint = predictLanding(match.ball);
+      this.landingTime = match.elapsed;
+      this.landingVelocity = {
+        x: match.ball.vx,
+        y: match.ball.vy,
+        z: match.ball.vz,
+      };
+    }
+    this.landingMarker.visible = high && !!this.landingPoint;
+    if (this.landingMarker.visible) {
+      this.landingMarker.position.set(
+        this.landingPoint.x,
+        0.026,
+        this.landingPoint.z,
+      );
+      this.landingMarker.scale.setScalar(
+        0.95 + Math.sin(match.elapsed * 5) * 0.05,
+      );
+    }
+    if (!high) this.landingTime = null;
+    if ((!match.field.altinha && !match.field.footvolley) || !playing)
+      followCamera(
+        this.camera,
+        this.look,
+        {
+          ball: match.ball,
+          playing,
+          wide: this.cameraMode === "tactical",
+          mobile: document.body.classList.contains("mobile"),
+          width: this.viewWidth,
+        },
+        dt,
+      );
+    if (match.field.altinha && playing) {
+      const xs = match.players.map((p) => p.x),
+        zs = match.players.map((p) => p.z);
+      const minX = Math.min(...xs),
+        maxX = Math.max(...xs),
+        minZ = Math.min(...zs),
+        maxZ = Math.max(...zs);
+      const target = new THREE.Vector3(
+        (minX + maxX) * 0.5,
+        0.95,
+        (minZ + maxZ) * 0.5,
+      );
+      const distance = Math.max(
+        12.8,
+        (maxX - minX) * 0.95 + (maxZ - minZ) * 0.55,
+      );
+      const cameraTarget = target
+        .clone()
+        .add(new THREE.Vector3(4.2, distance * 0.485, distance));
+      const blend = 1 - Math.exp(-dt * 7);
+      this.camera.position.lerp(cameraTarget, blend);
+      this.look.lerp(target, blend);
+      this.camera.lookAt(this.look);
+    }
+    if (match.field.footvolley && playing) {
+      const target = new THREE.Vector3(match.ball.x * 0.13, 1.2, 0);
+      const mobile=document.body.classList.contains("mobile");
+      const pos = target.clone().add(mobile ? new THREE.Vector3(2,10,14) : new THREE.Vector3(3,13,18));
+      if (this.camera.aspect < 1.3) pos.multiplyScalar(1.3);
+      const blend = 1 - Math.exp(-dt * 6);
+      this.camera.position.lerp(pos, blend);
+      this.look.lerp(target, blend);
+      this.camera.lookAt(this.look);
+    }
+    this.altinhaEffects.update(match);
+    this.updateShotEffects(match, dt);
+    this.playerEffects.update(match, this.rigs);
     this.renderer.render(this.scene, this.camera);
   }
 }

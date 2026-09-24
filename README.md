@@ -38,6 +38,8 @@ Interface adaptável a telas pequenas, com teclado, Gamepad API e controles mult
 
 ### Celular
 
+Para instalar como app iOS/Android, o repositório também inclui um wrapper Capacitor, build local do jogo, orientação horizontal e ponte nativa para controles físicos. Veja [como preparar o app mobile](docs/mobile-app.md). A instalação pelo ícone do navegador descrita abaixo é a opção PWA.
+
 A partida permanece em **horizontal**, com placar, nome/fôlego e radar compactos. Ao entrar em campo ou voltar do menu, solicita tela cheia e trava de orientação landscape. No online, a tentativa também acontece ao tocar **Estou pronto** ou **Iniciar partida**, pois o navegador exige um gesto. Se a trava nativa for recusada e o aparelho estiver vertical, a interface gira para manter o jogo horizontal, com coordenadas de toque corrigidas.
 
 O navegador pode recusar tela cheia; não é possível ocultar suas barras por CSS. O menu da partida oferece **Tela cheia** para tentar novamente. Há manifest com `display: fullscreen`, `orientation: landscape` e metadados de web app para abrir pelo ícone da Tela de Início no iPhone. Isso não instala o jogo automaticamente nem adiciona cache offline; o comportamento de instalação/tela cheia depende do navegador.

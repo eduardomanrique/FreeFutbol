@@ -47,9 +47,16 @@ export function createGameServer(options = {}) {
       code: room.code,
       status: room.status,
       networkMode: room.networkMode || "server",
+      mode: room.mode || "match",
       duration: room.duration,
       players: room.players.map(
-        (p) => p && { team: p.team, connected: !!p.socket, ready: p.ready },
+        (p) =>
+          p && {
+            team: p.team,
+            playerSlot: p.slot,
+            connected: !!p.socket,
+            ready: p.ready,
+          },
       ),
       expiresAt: room.worker || room.relay ? null : room.activity + lobbyMs,
     };
@@ -71,8 +78,10 @@ export function createGameServer(options = {}) {
       }
     log("room.closed", { code: room.code, reason });
   }
-  function member(room, team) {
+  function member(room, slot) {
+    const team = room.mode === "futevolei" ? Math.floor(slot / 2) : slot;
     const p = {
+      slot,
       token: token(),
       room,
       team,
@@ -81,7 +90,7 @@ export function createGameServer(options = {}) {
       disconnectedAt: Date.now(),
       seq: -1,
     };
-    room.players[team] = p;
+    room.players[slot] = p;
     sessions.set(p.token, p);
     return p;
   }
@@ -141,9 +150,12 @@ export function createGameServer(options = {}) {
         return reply(res, 409, {
           error: "Esta sala precisa da versão experimental por times.",
         });
-      if (room.status !== "waiting" || room.players[1])
+      if (room.status !== "waiting" || room.players.every(Boolean))
         return reply(res, 409, { error: "Sala cheia ou partida iniciada." });
-      player = member(room, 1);
+      player = member(
+        room,
+        room.mode === "futevolei" ? [2, 1, 3].find((i) => !room.players[i]) : 1,
+      );
     } else {
       if (body.networkMode === "teams" && body.teamProtocol !== 1)
         return reply(res, 409, {
@@ -166,8 +178,13 @@ export function createGameServer(options = {}) {
         code,
         status: "waiting",
         duration: body.duration,
-        networkMode: body.networkMode === "teams" ? "teams" : "server",
-        players: [null, null],
+        mode: body.mode === "futevolei" ? "futevolei" : "match",
+        networkMode:
+          body.mode !== "futevolei" && body.networkMode === "teams"
+            ? "teams"
+            : "server",
+        players:
+          body.mode === "futevolei" ? [null, null, null, null] : [null, null],
         activity: Date.now(),
         worker: null,
       };
@@ -180,6 +197,7 @@ export function createGameServer(options = {}) {
     reply(res, 201, {
       token: player.token,
       team: player.team,
+      playerSlot: player.slot,
       room: describe(room),
       version: PROTOCOL_VERSION,
     });
@@ -212,7 +230,13 @@ export function createGameServer(options = {}) {
   });
   function startMatch(room) {
     if (room.status !== "waiting") return;
-    if (room.players.some((p) => !p?.socket || !p.ready))
+    if (
+      room.mode === "futevolei"
+        ? !room.players.some((p) => p?.team === 0 && p.socket && p.ready) ||
+          !room.players.some((p) => p?.team === 1 && p.socket && p.ready) ||
+          room.players.some((p) => p && (!p.socket || !p.ready))
+        : room.players.some((p) => !p?.socket || !p.ready)
+    )
       throw new Error("Os dois jogadores precisam estar conectados e prontos.");
     if (
       [...rooms.values()].filter((r) => r.worker || r.relay).length >=
@@ -235,7 +259,11 @@ export function createGameServer(options = {}) {
     const worker = (room.worker = new Worker(
       new URL("./match-worker.js", import.meta.url),
       {
-        workerData: { duration: room.duration },
+        workerData: {
+          duration: room.duration,
+          mode: room.mode,
+          humans: room.players.map((p) => !!p?.socket),
+        },
         resourceLimits: { maxOldGenerationSizeMb: 128 },
       },
     ));
@@ -247,9 +275,10 @@ export function createGameServer(options = {}) {
       if (rooms.get(room.code) !== room) return;
       if (msg.type === "ready") {
         clearTimeout(room.startTimer);
-        room.status = room.players.every((p) => p?.socket)
-          ? "playing"
-          : "reconnecting";
+        room.status =
+          room.mode === "futevolei" || room.players.every((p) => p?.socket)
+            ? "playing"
+            : "reconnecting";
         worker.postMessage({ type: "pause", value: room.status !== "playing" });
         broadcast(room);
         log("match.started", { code: room.code });
@@ -335,6 +364,7 @@ export function createGameServer(options = {}) {
           send(ws, {
             type: "authenticated",
             team: player.team,
+            playerSlot: player.slot,
             sequence: player.seq,
           });
           if (
@@ -345,6 +375,12 @@ export function createGameServer(options = {}) {
             room.worker?.postMessage({ type: "pause", value: false });
             room.relay?.pause(false);
           }
+          if (room.mode === "futevolei")
+            room.worker?.postMessage({
+              type: "seat",
+              slot: player.slot,
+              connected: true,
+            });
           broadcast(room);
           if (room.relay) {
             // Resume both clocks and invalidate old speculative contact claims.
@@ -361,6 +397,16 @@ export function createGameServer(options = {}) {
           return;
         }
         if (msg.type === "leave") {
+          if (room.mode === "futevolei" && room.worker) {
+            room.worker.postMessage({
+              type: "seat",
+              slot: player.slot,
+              connected: false,
+            });
+            sessions.delete(player.token);
+            ws.close(1000, "Left");
+            return;
+          }
           closeRoom(room, "Um jogador saiu da sala.");
           return;
         }
@@ -371,7 +417,7 @@ export function createGameServer(options = {}) {
           return;
         }
         if (msg.type === "start") {
-          if (player.team !== 0)
+          if (player.slot !== 0)
             throw new Error("Somente o criador pode iniciar.");
           startMatch(room);
           return;
@@ -403,7 +449,12 @@ export function createGameServer(options = {}) {
           if (!input) throw new Error("Comando inválido.");
           if (input.seq <= player.seq) return;
           player.seq = input.seq;
-          room.worker.postMessage({ type: "input", team: player.team, input });
+          room.worker.postMessage({
+            type: "input",
+            team: player.team,
+            slot: player.slot,
+            input,
+          });
           return;
         }
       } catch (error) {
@@ -421,7 +472,13 @@ export function createGameServer(options = {}) {
       player.disconnectedAt = Date.now();
       player.ready = false;
       const room = player.room;
-      if (room.status === "playing") {
+      if (room.mode === "futevolei")
+        room.worker?.postMessage({
+          type: "seat",
+          slot: player.slot,
+          connected: false,
+        });
+      if (room.status === "playing" && room.mode !== "futevolei") {
         room.status = "reconnecting";
         room.worker?.postMessage({ type: "pause", value: true });
         room.relay?.pause(true);
@@ -437,11 +494,19 @@ export function createGameServer(options = {}) {
         for (const p of room.players)
           if (p.socket && now - p.lastTeamAt > 5000) p.socket.terminate();
       if (
+        room.mode !== "futevolei" &&
         room.players.some(
           (p) => p && !p.socket && now - p.disconnectedAt > reconnectMs,
         )
       )
         closeRoom(room, "O prazo de reconexão terminou.");
+      else if (
+        room.mode === "futevolei" &&
+        room.players
+          .filter(Boolean)
+          .every((p) => !p.socket && now - p.disconnectedAt > reconnectMs)
+      )
+        closeRoom(room, "Sala vazia.");
       else if (
         ((!room.worker && !room.relay) || room.status === "finished") &&
         now - room.activity > lobbyMs

@@ -74,7 +74,10 @@ test("mobile keeps the close zoom and centres on high balls at corners", () => {
     state.mobile = false;
     step(10);
     assert.ok(
-      Math.abs(mobileDistance / camera.position.distanceTo(look) - 0.8) < 1e-6,
+      Math.abs(
+        mobileDistance / camera.position.distanceTo(look) -
+          (wide ? 0.65 : 0.55),
+      ) < 1e-6,
     );
   }
 });

@@ -8,6 +8,7 @@ test("throw-in is stationary at the exit line, uses hands and releases inside to
       const m = new Match({ multiplayer: true, random: () => 0 });
       m.start();
       m.restart(team, 8, side * 30, "LATERAL");
+      for (let i = 0; i < 265; i++) m.update(1 / 120, {}, {});
       const sp = m.setPiece,
         p = m.players[sp.taker];
       assert.equal(sp.type, "throw");
@@ -39,11 +40,15 @@ test("corner waits for a foot strike from the corner area and keeps opponents at
       m.start();
       const end = team ? -1 : 1;
       // An opponent just outside the corner must also move far enough inward.
-      Object.assign(m.players.find((q) => q.team !== team && !q.keeper), {
-        x: end * 46.2,
-        z: side * 30.2,
-      });
+      Object.assign(
+        m.players.find((q) => q.team !== team && !q.keeper),
+        {
+          x: end * 46.2,
+          z: side * 30.2,
+        },
+      );
       m.restart(team, end * 45, side * 29, "ESCANTEIO");
+      for (let i = 0; i < 265; i++) m.update(1 / 120, {}, {});
       const sp = m.setPiece,
         p = m.players[sp.taker];
       assert.ok(Math.hypot(m.ball.x - end * 46, m.ball.z - side * 30) < 1);
@@ -122,6 +127,8 @@ test("the whole ball must cross the line; physical deflections decide the awarde
   assert.equal(m.setPiece, null);
   m.ball.z = 30.2;
   m.integrateBall(1 / 120);
+  assert.equal(m.pendingRestart.message, "LATERAL");
+  for (let i = 0; i < 241; i++) m.update(1 / 120, {});
   assert.equal(m.setPiece?.type, "throw");
   assert.equal(m.setPiece.team, 0);
   m.physics.dispose();
@@ -147,6 +154,8 @@ test("throw-in cannot score directly and second touch is penalised", () => {
   m.integrateBall(1 / 120);
   assert.equal(m.score[0], 0);
   assert.equal(m.event, "TIRO DE META");
+  m.pendingRestart = null;
+  m.setPiece = null; // Isolate the separate second-touch incident after the restart.
   m.restartRestriction = { type: "corner", team: 0, player: 9 };
   m.kickReleasedAt = 0;
   m.elapsed = 1;

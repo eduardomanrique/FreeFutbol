@@ -45,9 +45,9 @@ Todas as rotas ficam sob `/futebol/api`, inclusive no ambiente local.
 | Interface | Contrato |
 | --- | --- |
 | `GET /healthz` | Saúde, versão do protocolo, número de salas e partidas |
-| `POST /rooms` | `{version:1,duration:180\|360\|600}` → sala, time e token |
-| `POST /rooms/join` | `{version:1,code:"ABC234"}` → sala, time e token |
-| `WS /ws` | Primeira mensagem `{type:"auth",version:1,token}` em até 5 s |
+| `POST /rooms` | `{version:2,duration:180\|360\|600,mode?:"futevolei"}` → sala, time e token |
+| `POST /rooms/join` | `{version:2,code:"ABC234"}` → sala, time e token |
+| `WS /ws` | Primeira mensagem `{type:"auth",version:2,token}` em até 5 s |
 
 Após autenticar: `ready` com `value`, `start`, `leave`, `ping` com `sent`, e `input` com `{seq,x,z,sprint,jockey,finesse,events}`. Eixos finitos no intervalo [−1,1]. Até 12 eventos por input; tipos `begin` (action: pass/lob/through/shoot), `release`, `switch`, `tackle`, `slide`, `cancel`.
 
@@ -109,3 +109,6 @@ Frontend e backend publicados usam protocolo1. O script antigo `activate-vps.sh`
 ### Release publicado e validação
 
 Em 23/09/2026, frontend `20260923-3676186704ca` e backend `20260923-ca8814c76126` foram atualizados juntos, a partir do commit `31a27b4`. Os dois containers ficaram saudáveis, o endpoint HTTPS respondeu com protocolo1 e a página pública serviu o seletor “Cada cliente simula seu time”. Não havia salas/partidas ativas no início do deploy; os demais containers mantiveram seus IDs. Backup: `/opt/futebol/deploy-backups/stack-20260923-3676186704ca`. A release anterior era frontend `20260920-960c5ccb638f` e backend `20260920-da3b2194709c`. Limites iniciais:8 salas e2 partidas simultâneas. O benchmark local não representa capacidade do VPS.
+
+
+Futevôlei (implementação local de24/09/2026): protocolo2, quatro assentos por sala, IA em vagas/desconexões e worker autoritativo. Snapshots incluem `variant`, `footvolley`, poses e acknowledgements por atleta; futebol mantém dois acknowledgements por equipe. Frontend e backend devem ser publicados juntos. O histórico de produção acima permanece em protocolo1 até novo deploy.

@@ -107,3 +107,18 @@ Pausar localmente não pode congelar a partida dos demais. Desconexão, reconex�
 ## Fora do escopo inicial
 
 Ranking público, torneios, partidas 3×3/4×4, regras específicas de cada federação, replay e matchmaking aleatório ficam para depois. Validar primeiro o 2×2 Solo contra IA e o 2×2 online por código, com IA nos lugares vazios e partidas curtas.
+
+## Implementação — 24/09/2026
+
+Modo disponível no menu **Futevôlei** (Solo) e no seletor **Futevôlei online** (sala por código). A quadra mede 18 × 9 m, com rede a 2,2 m. Partida até 15, com dois pontos de vantagem. Regras e movimento ficam em `src/footvolley.js`; a bola usa a física compartilhada de trajetória aérea. Os contatos têm preparação, alcance limitado e animações reaproveitadas da altinha. Passe recebe no peito, Alto prepara um levantamento de pé, e Ataque usa cabeça quando a bola está alta. A assistência aproxima o atleta somente quando já está perto da bola.
+
+No Solo, Q/LB troca entre os dois atletas e um passe assume o parceiro que recebe. No online, cada pessoa conserva um assento: 2 a 4 participantes, lados atribuídos alternadamente, IA nas vagas, reconexão ao mesmo atleta. O anfitrião inicia após todos os humanos confirmarem e existir alguém em cada lado. O servidor decide contatos, pontos e reinícios, e rejeita entradas com sequência repetida. Desconexão ativa IA sem pausar a partida.
+
+O protocolo de admissão agora é **2**. Frontend e backend precisam ser atualizados juntos; esta rodada não publicou o servidor de produção. Para testar localmente, executar `npm run server` e `npm run dev`.
+
+Validação: suíte com 240 testes; cenários de regras, contatos inalcançáveis, rally completo entre IAs, salas de 2/4 pessoas, eventos repetidos e reconexão. Navegador com duas sessões independentes, imagens de peito/pé/cabeça e acionamento por toque no celular. Android/iOS sincronizados; sem instalação física ou publicação.
+
+### Seleção e salvamento — 24/09/2026
+No Solo, o controle passa automaticamente ao companheiro legal mais próximo da queda prevista pela física. Há uma pequena margem e intervalo para evitar alternância constante; um toque já preparado termina antes da troca. O último atleta que tocou é excluído enquanto não houver toque de outro jogador ou passagem para o adversário. Online, os assentos humanos continuam fixos.
+
+Pedir Passe, Alto ou Ataque só inicia mergulho se a bola estiver descendo, a mais de 3,2 m, com menos de 0,65 s até o contato baixo e além do alcance estimado de uma aproximação normal. Bolas altas com tempo disponível permitem aproximação em pé. O atleta avança e cai de lado, precisa alcançar fisicamente a bola e demora um pouco para se recuperar. A devolução tem ápice de 4,8–5,6 m e dispersão moderada (até 1 m em profundidade e 1,5 m lateralmente), podendo sair sobretudo perto das linhas. A direção não é limitada à quadra para garantir o acerto. Bolas inalcançáveis ainda resultam em perda do ponto.

@@ -1,3 +1,12 @@
+import {
+  bodyTouch,
+  bodySurface,
+  pickupFoot,
+  shoulderMotion,
+} from "./altinha-contact.js";
+import { bindKneeHinge, solveKneeHinge } from "./leg-hinge.js";
+import { poseAroundLeg } from "./altinha-around.js";
+import { motionAction } from "./action-state.js";
 import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
@@ -60,11 +69,14 @@ function outfit(mesh, id) {
       ),
       shorts = new T.Color(team ? "#742e23" : "#173e2c"),
       boot = new T.Color([0xd6e06a, 0x252824, 0xeeeeea][id % 3]);
+    const kitStyle = { value: new T.Vector3(1, 1, 1) }; // shirt, socks, shoes
     // Classify in bind space in the fragment shader: skinning then preserves
     // crisp cuffs and hems instead of interpolating clothing colors per vertex.
     mesh.material = new T.MeshStandardMaterial({ roughness: 0.92 });
+    mesh.material.userData.kitStyle = kitStyle;
     mesh.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, {
+        kitStyle,
         kitSkin: { value: skin },
         kitShirt: { value: shirt },
         kitShorts: { value: shorts },
@@ -77,7 +89,7 @@ function outfit(mesh, id) {
         "#include <begin_vertex>\nvKitPosition = position;",
       );
       shader.fragmentShader =
-        "varying vec3 vKitPosition;\nuniform vec3 kitSkin, kitShirt, kitShorts, kitBoot;\n" +
+        "varying vec3 vKitPosition;\nuniform vec3 kitSkin, kitShirt, kitShorts, kitBoot, kitStyle;\n" +
         shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <color_fragment>",
@@ -86,10 +98,12 @@ function outfit(mesh, id) {
         vec3 p = vKitPosition;
         vec3 kit = kitSkin;
         bool collar = abs(p.x) < 0.085 && p.y > 1.49;
-        if (p.y > 0.93 && p.y < 1.59 && abs(p.x) < 0.48 && !collar) kit = kitShirt;
+        if (kitStyle.x > 0.5 && p.y > 0.93 && p.y < 1.59 && abs(p.x) < 0.48 && !collar) kit = kitShirt;
         else if (p.y > 0.64 && p.y <= 0.95 && abs(p.x) < 0.27) kit = kitShorts;
-        else if (p.y > 0.12 && p.y < 0.43 && abs(p.x) < 0.27) kit = kitShirt;
-        else if (p.y <= 0.12) kit = kitBoot;
+        else if (kitStyle.y > 0.5 && p.y > 0.12 && p.y < 0.43 && abs(p.x) < 0.27) kit = kitShirt;
+        else if (kitStyle.z > 0.5 && p.y <= 0.12) kit = kitBoot;
+        if (kitStyle.x > .5 && p.y > 1.28 && p.y < 1.33 && abs(p.x) < .23) kit = mix(kitShirt, vec3(.95), .65);
+        if (p.y > .65 && p.y < .91 && abs(p.x) > .21 && abs(p.x) < .27) kit = mix(kitShorts, vec3(.95), .7);
         diffuseColor.rgb *= kit;
       `,
       );
@@ -128,13 +142,20 @@ export function correctLeg(
   foot.getWorldPosition(c);
   toe.getWorldPosition(d);
   const footRotation = foot.getWorldQuaternion(new T.Quaternion());
+  const anatomical = hip.userData.kneeForward;
+  kneeDirection ||= anatomical || null;
   const delta = target.clone().sub(d).clampLength(0, maxCorrection);
   const goal = c.clone().add(delta);
   const l1 = a.distanceTo(b),
     l2 = b.distanceTo(c),
     axis = goal.clone().sub(a),
-    distance = Math.min(axis.length(), (l1 + l2) * 0.995);
+    distance = T.MathUtils.clamp(
+      axis.length(),
+      anatomical ? (l1 + l2) * 0.24 : Math.abs(l1 - l2) + 0.001,
+      (l1 + l2) * 0.995,
+    );
   axis.normalize();
+  goal.copy(a).addScaledVector(axis, distance);
   pole.copy(b).sub(a).addScaledVector(axis, -b.clone().sub(a).dot(axis));
   if (kneeDirection)
     pole.copy(kneeDirection).addScaledVector(axis, -kneeDirection.dot(axis));
@@ -146,18 +167,22 @@ export function correctLeg(
     .copy(a)
     .addScaledVector(axis, along)
     .addScaledVector(pole, Math.sqrt(Math.max(0, l1 * l1 - along * along)));
-  q.setFromUnitVectors(
-    b.clone().sub(a).normalize(),
-    knee.clone().sub(a).normalize(),
-  );
-  rotateWorld(hip, q);
-  shin.getWorldPosition(b);
-  foot.getWorldPosition(c);
-  q.setFromUnitVectors(
-    c.clone().sub(b).normalize(),
-    goal.clone().sub(b).normalize(),
-  );
-  rotateWorld(shin, q);
+  if (hip.userData.kneeHinge) {
+    solveKneeHinge(hip, shin, foot, knee, goal, hip.userData.kneeHinge);
+  } else {
+    q.setFromUnitVectors(
+      b.clone().sub(a).normalize(),
+      knee.clone().sub(a).normalize(),
+    );
+    rotateWorld(hip, q);
+    shin.getWorldPosition(b);
+    foot.getWorldPosition(c);
+    q.setFromUnitVectors(
+      c.clone().sub(b).normalize(),
+      goal.clone().sub(b).normalize(),
+    );
+    rotateWorld(shin, q);
+  }
   shin.getWorldQuaternion(parentQ);
   foot.quaternion.copy(parentQ.invert()).multiply(footRotation);
   foot.updateWorldMatrix(false, true);
@@ -210,6 +235,7 @@ export function buildSkinnedAthlete(assets, id) {
     model.updateMatrixWorld(true);
     foot.attach(shoe);
     shoe.castShadow = true;
+    shoe.userData.isShoe = true;
   }
   root.scale.setScalar(1.025 + (id % 4) * 0.01);
   const bones = assets.library.bones.map((name) => model.getObjectByName(name));
@@ -223,6 +249,8 @@ export function buildSkinnedAthlete(assets, id) {
       .getObjectByName("foot_" + side)
       .getWorldQuaternion(new T.Quaternion()),
   }));
+  for (const leg of legs)
+    leg.hip.userData.kneeHinge = bindKneeHinge(leg.hip, leg.shin, leg.foot);
   const arms = ["l", "r"].map((side) => ({
     side: side === "l" ? 1 : -1,
     upper: model.getObjectByName("upperarm_" + side),
@@ -253,6 +281,19 @@ export function buildSkinnedAthlete(assets, id) {
   };
 }
 export function animateSkinnedAthlete(rig, p, match) {
+  if (rig.outfitMode !== match.variant) {
+    rig.outfitMode = match.variant;
+    const street = match.variant === "street",
+      beach = match.field?.surface === "sand";
+    rig.root.traverse((node) => {
+      if (node.userData.isShoe) node.visible = !beach;
+      node.material?.userData.kitStyle?.value.set(
+        street && p.team === 1 ? 0 : 1,
+        street || beach ? 0 : 1,
+        beach ? 0 : 1,
+      );
+    });
+  }
   const motion = p.motion;
   if (!motion) return;
   const l = p.locomotion;
@@ -266,7 +307,7 @@ export function animateSkinnedAthlete(rig, p, match) {
     bone.quaternion.fromArray(motion.pose, offset + 3);
     if (
       motion.action === "locomotion" &&
-      !p.ballAction &&
+      !motionAction(p) &&
       !p.recovery &&
       /^(upperarm|lowerarm)_/.test(bone.name)
     ) {
@@ -274,6 +315,40 @@ export function animateSkinnedAthlete(rig, p, match) {
       bone.quaternion.slerp(rest, (motion.relaxedBlend || 0) * 0.5);
     }
   }
+  // A stable anatomical bend plane is shared by every mode. The old solver
+  // could inherit a reversed knee plane from an extreme sampled pose.
+  const legForward = new T.Vector3(Math.sin(l.heading), 0, Math.cos(l.heading));
+  for (const leg of rig.legs) leg.hip.userData.kneeForward = legForward;
+  if (match.field?.altinha || match.field?.footvolley) {
+    poseAltinha(rig, p, match);
+    return;
+  }
+  if (motion.action === "locomotion" && !p.header && !p.keeper) {
+    const calm = 1 - T.MathUtils.clamp(Math.hypot(p.vx, p.vz) / 5, 0, 1);
+    const heading = l.heading,
+      right = new T.Vector3(Math.cos(heading), 0, -Math.sin(heading));
+    rig.root.updateMatrixWorld(true);
+    rotateWorld(
+      rig.torso,
+      new T.Quaternion().setFromAxisAngle(
+        right,
+        Math.sin(match.elapsed * 2.7 + p.id) * 0.016 * calm,
+      ),
+    );
+    const ballYaw = Math.atan2(match.ball.x - p.x, match.ball.z - p.z);
+    const yaw = Math.atan2(
+      Math.sin(ballYaw - heading),
+      Math.cos(ballYaw - heading),
+    );
+    rotateWorld(
+      rig.head,
+      new T.Quaternion().setFromAxisAngle(
+        new T.Vector3(0, 1, 0),
+        T.MathUtils.clamp(yaw, -0.55, 0.55) * 0.38 * calm,
+      ),
+    );
+  }
+  if (poseSpecial(rig, p, match)) return;
   if (p.keeper && p.goalkeeping) {
     poseGoalkeeper(rig, p);
     return;
@@ -375,6 +450,39 @@ export function animateSkinnedAthlete(rig, p, match) {
           ((p.strikePlant?.foot ?? l.strikeFollow?.supportFoot) === 0 ? -1 : 1),
     );
   }
+  // Rare cosmetic pass/reception variants keep both the contact target and
+  // the simulation untouched. Suppress immediately for an urgent new action.
+  const flair = p.flair;
+  if (
+    flair &&
+    !motionAction(p) &&
+    !p.recovery &&
+    !p.shield &&
+    Math.hypot(p.vx, p.vz) < 4.2
+  ) {
+    const phase = T.MathUtils.clamp(
+      (match.elapsed - flair.at) / flair.duration,
+      0,
+      1,
+    );
+    const wave = Math.sin(Math.PI * phase),
+      side = flair.side;
+    worldTurn(rig.torso, up, side * 0.16 * wave);
+    worldTurn(
+      rig.head,
+      up,
+      side * (flair.kind === "no-look" ? -0.45 : 0.14) * wave,
+    );
+    worldTurn(
+      rig.torso,
+      right,
+      (flair.kind === "soft-chest" ? -0.13 : 0.03) * wave,
+    );
+    for (const arm of rig.arms)
+      worldTurn(arm.upper, forward, arm.side * 0.13 * wave);
+    if (flair.kind === "open-foot")
+      worldTurn(rig.legs[flair.foot].foot, up, side * 0.18 * wave);
+  }
   // Whole-body launch pitch plus extra torso flexion, fading as acceleration falls.
   rig.root.updateMatrixWorld(true);
   rotateWorld(
@@ -400,7 +508,9 @@ export function animateSkinnedAthlete(rig, p, match) {
   );
   const control = match.controls[p.team];
   const charge =
-    control.charging && control.selected === p.id ? control.charge : 0;
+    motionAction(p) && control.charging && control.selected === p.id
+      ? control.charge
+      : 0;
   rig.torso.rotateY(-charge * 0.16 + (p.actionTwist || 0));
   const recovery = p.recoveryDuration
     ? (p.recovery || 0) / p.recoveryDuration
@@ -662,6 +772,117 @@ export function animateSkinnedAthlete(rig, p, match) {
   rig.root.updateMatrixWorld(true);
 }
 
+function poseSpecial(rig, p, match) {
+  const special =
+    p.slide || p.knockdown || p.evade || p.bicycle || p.celebration;
+  const wall = match.setPiece?.wall?.includes(p.id);
+  if (!special && !wall) return false;
+  for (let i = 0; i < rig.bones.length; i++) {
+    rig.bones[i].position.fromArray(p.motion.idlePose, i * 7);
+    rig.bones[i].quaternion.fromArray(p.motion.idlePose, i * 7 + 3);
+  }
+  let pelvisHeight = null;
+  if (p.slide) {
+    const u = p.slide.time,
+      blend = Math.min(1, u / 0.13) * Math.min(1, (1.05 - u) / 0.22);
+    rig.root.rotateX(-1.12 * blend);
+    pelvisHeight = 1.02 - 0.66 * blend;
+    rig.legs[0].hip.rotateX(0.45 * blend);
+    rig.legs[1].hip.rotateX(-0.6 * blend);
+    rig.legs[1].shin.rotateX(1.2 * blend);
+    rig.arms.forEach((a) => {
+      a.upper.rotateZ(a.side * 0.65 * blend);
+      a.lower.rotateX(-0.45);
+    });
+  } else if (p.knockdown) {
+    const t = p.knockdown.time,
+      blend = Math.min(1, t / 0.18) * Math.min(1, (1.6 - t) / 0.45);
+    rig.root.rotateX(1.38 * blend);
+    pelvisHeight = 1.02 - 0.72 * blend;
+    rig.arms.forEach((a) => a.upper.rotateX(-1.1 * blend));
+    rig.legs.forEach((l) => l.shin.rotateX(0.65 * blend));
+  } else if (p.bicycle) {
+    const u = Math.min(1, p.bicycle.time / 1.2),
+      air = Math.sin(Math.PI * u);
+    rig.root.rotation.set(0, p.bicycle.heading, 0);
+    rig.root.rotateX(-2.6 * air);
+    pelvisHeight = 0.95 + 0.42 * air;
+    const scissor = Math.sin(u * Math.PI * 3);
+    rig.legs[0].hip.rotateX(1.1 * scissor);
+    rig.legs[1].hip.rotateX(-1.1 * scissor);
+    rig.legs[0].shin.rotateX(0.3);
+    rig.legs[1].shin.rotateX(0.85);
+    rig.arms.forEach((a) => a.upper.rotateZ(a.side * 0.95));
+  } else if (p.evade) {
+    rig.root.position.y = p.evade.height;
+    rig.legs.forEach((l) => {
+      l.hip.rotateX(-0.6);
+      l.shin.rotateX(1.1);
+    });
+    rig.arms.forEach((a) => a.upper.rotateZ(a.side * 0.8));
+  } else if (p.celebration) {
+    const c = p.celebration;
+    if (c.won) {
+      rig.root.position.y = 0;
+      rig.arms.forEach((a) => {
+        a.upper.rotateZ(a.side * (1.5 + Math.sin(c.time * 6) * 0.3));
+        a.lower.rotateX(-0.5);
+      });
+      rig.torso.rotateY(Math.sin(c.time * 5) * 0.15);
+    } else {
+      rig.head.rotateX(0.5);
+      rig.torso.rotateX(0.15);
+      rig.root.updateMatrixWorld(true);
+      const head = rig.head.getWorldPosition(new T.Vector3());
+      const heading = p.locomotion.heading;
+      for (const arm of rig.arms) {
+        const target = head
+          .clone()
+          .add(
+            new T.Vector3(
+              Math.cos(heading) * arm.side * 0.13 + Math.sin(heading) * 0.055,
+              0.1,
+              -Math.sin(heading) * arm.side * 0.13 + Math.cos(heading) * 0.055,
+            ),
+          );
+        correctLeg(
+          arm.upper,
+          arm.lower,
+          arm.hand,
+          arm.palm,
+          target,
+          2,
+          new T.Vector3(
+            Math.cos(heading) * arm.side,
+            0.15,
+            -Math.sin(heading) * arm.side,
+          ),
+        );
+      }
+    }
+  } else if (wall) {
+    rig.arms.forEach((a) => {
+      a.upper.rotateX(-0.4);
+      a.lower.rotateX(-1.2);
+    });
+  }
+  rig.root.updateMatrixWorld(true);
+  if (pelvisHeight !== null) {
+    const current = rig.pelvis.getWorldPosition(new T.Vector3());
+    rig.root.position.y += pelvisHeight - current.y;
+    rig.root.updateMatrixWorld(true);
+  }
+  // Avoid limbs penetrating the street while retaining the low sliding pose.
+  if (p.slide || p.knockdown || p.bicycle) {
+    let lowest = Infinity;
+    for (const leg of rig.legs)
+      for (const b of [leg.foot, leg.toe])
+        lowest = Math.min(lowest, b.getWorldPosition(new T.Vector3()).y);
+    if (lowest < 0.045) rig.root.position.y += 0.045 - lowest;
+  }
+  rig.root.updateMatrixWorld(true);
+  return true;
+}
 function poseGoalkeeper(rig, p) {
   const g = p.goalkeeping,
     dir = p.team === 0 ? 1 : -1;
@@ -753,5 +974,304 @@ function poseGoalkeeper(rig, p) {
       error: actual.distanceTo(target),
     });
   });
+  rig.root.updateMatrixWorld(true);
+}
+
+function poseAltinha(rig, p, m) {
+  const action = p.altinhaPose,
+    time = m.elapsed,
+    heading = p.locomotion.heading;
+  const clamp = T.MathUtils.clamp,
+    smooth = (x) => {
+      x = clamp(x, 0, 1);
+      return x * x * (3 - 2 * x);
+    };
+  const speed = Math.hypot(p.vx, p.vz),
+    quiet = 1 - clamp(speed / 2.2, 0, 1);
+  const forward = new T.Vector3(Math.sin(heading), 0, Math.cos(heading));
+  const right = new T.Vector3(Math.cos(heading), 0, -Math.sin(heading));
+  const up = new T.Vector3(0, 1, 0);
+  const enter = action ? smooth((time - action.startedAt) / 0.18) : 0;
+  const release =
+    (action?.hitAt ?? action?.landedAt) != null
+      ? 1 -
+        smooth(
+          (time - (action.hitAt ?? action.landedAt)) /
+            (action.rescue || action.dive ? 1 : 0.48),
+        )
+      : 1;
+  const landingAge =
+    action?.rescue && action.hitAt != null ? time - action.hitAt : 0;
+  const kneel =
+    landingAge > 0
+      ? smooth(landingAge / 0.18) * (1 - smooth((landingAge - 0.5) / 0.5))
+      : 0;
+  const weight = enter * release,
+    side = action?.side ?? 1;
+  const bicycle = action?.kind === "bicycle";
+  const rescueTime = action?.rescue
+    ? smooth((time - action.rescue.at) / 0.14)
+    : 0;
+  const fold = (action?.rescue?.fold || 0) * rescueTime * release;
+  const index = side > 0 ? 0 : 1;
+  // Stable ready stance, but retain the authored gait whenever actually walking.
+  for (let i = 0; i < rig.bones.length; i++) {
+    const bone = rig.bones[i],
+      offset = i * 7;
+    bone.position.lerp(
+      new T.Vector3().fromArray(p.motion.idlePose, offset),
+      quiet,
+    );
+    bone.quaternion.slerp(
+      new T.Quaternion().fromArray(p.motion.idlePose, offset + 3),
+      quiet,
+    );
+  }
+  rig.root.rotation.set(0, heading, 0);
+  const breathing = Math.sin(time * 3.2 + p.id * 0.8);
+  const transfer =
+    -side * 0.075 * weight + Math.sin(time * 1.8 + p.id) * 0.018 * quiet;
+  rig.root.position.addScaledVector(right, transfer);
+  rig.root.position.y =
+    -0.035 * quiet -
+    0.045 * weight +
+    0.009 * breathing * quiet -
+    Math.max((action?.crouch || 0) * weight, 0.44 * kneel);
+  if (action?.dive) {
+    // Lean back and fall sideways while extending the kicking leg; recover
+    // after the contact (or missed attempt), with no change to knee axes.
+    const fall = smooth((time - action.dive.at) / 0.28) * release;
+    rig.root.rotation.x = -0.65 * fall;
+    rig.root.rotation.z = -side * 1.05 * fall;
+    rig.root.updateMatrixWorld(true);
+    rig.root.position.y +=
+      (0.45 - rig.pelvis.getWorldPosition(new T.Vector3()).y) * fall;
+  }
+  if (bicycle) {
+    rig.root.rotateX(-1.3 * weight);
+    rig.root.updateMatrixWorld(true);
+    rig.root.position.y +=
+      1 + 0.13 * weight - rig.pelvis.getWorldPosition(new T.Vector3()).y;
+  }
+  rig.root.updateMatrixWorld(true);
+  const turn = (bone, axis, amount) =>
+    rotateWorld(bone, new T.Quaternion().setFromAxisAngle(axis, amount));
+  const twist =
+    (action?.kind === "outside"
+      ? -0.18
+      : action?.kind === "cross"
+        ? 0.22
+        : action?.kind === "heel"
+          ? 0.28
+          : 0) * weight;
+  turn(rig.pelvis, up, twist);
+  turn(rig.pelvis, right, fold * 0.72);
+  turn(rig.torso, up, -twist * 0.65);
+  turn(rig.torso, forward, side * 0.075 * weight);
+  turn(
+    rig.torso,
+    right,
+    bodyTouch(action)
+      ? action.kind === "chest"
+        ? -0.29 * weight
+        : fold * 0.28 - 0.12 * weight * (1 - rescueTime)
+      : 0.025 * breathing * quiet - 0.06 * weight,
+  );
+  const ballDistance = Math.hypot(m.ball.x - p.x, m.ball.z - p.z);
+  turn(
+    rig.head,
+    right,
+    clamp((1.6 - m.ball.y) / Math.max(0.8, ballDistance), -0.5, 0.4) * 0.25 -
+      fold * 0.25,
+  );
+  for (const arm of rig.arms) {
+    turn(
+      arm.upper,
+      forward,
+      arm.side *
+        (0.13 * quiet + (action?.kind === "chest" ? 0.58 : 0.36) * weight),
+    );
+    turn(
+      arm.upper,
+      right,
+      (-0.08 + arm.side * side * 0.15) * weight + 0.035 * breathing * quiet,
+    );
+    turn(arm.lower, right, -0.15 * quiet - 0.18 * weight);
+  }
+  rig.root.updateMatrixWorld(true);
+  rig.altinhaBodyContact = null;
+  if (bodyTouch(action) && kneel < 0.1) {
+    // Couple the visible shoulder/chest to the same surface used by the ball.
+    // Reach comes from a small torso lean/shift, while planted feet stay fixed.
+    const surface =
+      action.contact && action.hitAt != null
+        ? action.contact
+        : bodySurface(p, action, m.ball, time);
+    const shoulder = action.kind === "shoulder",
+      head = action.kind === "head";
+    const shrug = shoulder ? shoulderMotion(action, m.ball, time) : null;
+    turn(
+      rig.torso,
+      forward,
+      shoulder ? side * shrug.roll : -side * 0.12 * weight,
+    );
+    turn(rig.torso, up, side * 0.1 * weight);
+    if (shoulder) {
+      const clavicle = rig.model.getObjectByName(
+        side > 0 ? "clavicle_l" : "clavicle_r",
+      );
+      if (clavicle) turn(clavicle, forward, side * shrug.lift * 2.5);
+    }
+    const anchor = () =>
+      head
+        ? rig.head
+            .getWorldPosition(new T.Vector3())
+            .addScaledVector(up, 0.17 * rig.root.scale.x)
+            .addScaledVector(forward, 0.04 * rig.root.scale.x)
+        : shoulder
+          ? rig.arms[index].upper
+              .getWorldPosition(new T.Vector3())
+              .addScaledVector(up, 0.055 * rig.root.scale.x)
+          : rig.torso
+              .getWorldPosition(new T.Vector3())
+              .addScaledVector(up, 0.29 * rig.root.scale.x)
+              .addScaledVector(forward, 0.13 * rig.root.scale.x);
+    rig.root.updateMatrixWorld(true);
+    const actual = anchor(),
+      target = new T.Vector3(surface.x, surface.y, surface.z);
+    const delta = target
+      .clone()
+      .sub(actual)
+      .clampLength(0, action.rescue ? 0.5 : 0.3)
+      .multiplyScalar(weight);
+    rig.root.position.add(delta);
+    rig.root.updateMatrixWorld(true);
+    rig.altinhaBodyContact = {
+      kind: action.kind,
+      actual: anchor(),
+      target,
+      error: anchor().distanceTo(target),
+    };
+  }
+  const lifted = action && !["head", "chest", "shoulder"].includes(action.kind);
+  const localTarget = (x, y, z) =>
+    new T.Vector3(p.x, y, p.z)
+      .addScaledVector(right, x)
+      .addScaledVector(forward, z);
+  for (let i = 0; i < rig.legs.length; i++) {
+    const leg = rig.legs[i],
+      legSide = i === 0 ? 1 : -1;
+    const planted =
+      bodyTouch(action) ||
+      (action?.kind === "around" && action.stage === "orbit" && i !== index);
+    if (planted) {
+      // Lower through the knees without carrying the walking ankle pitch into
+      // the sand. Keep both soles supported during the short body adjustment.
+      const flat = new T.Quaternion()
+        .setFromAxisAngle(up, heading)
+        .multiply(leg.restRotation);
+      leg.foot.quaternion
+        .copy(leg.shin.getWorldQuaternion(new T.Quaternion()).invert())
+        .multiply(flat);
+      leg.foot.updateWorldMatrix(false, true);
+    }
+    const contactFoot =
+      action?.kind === "high-heel" && i === index ? leg.foot : leg.toe;
+    let target = contactFoot.getWorldPosition(new T.Vector3());
+    // Fix the support foot while the pelvis sinks and shifts over it.
+    const ground = bicycle
+      ? localTarget(legSide * 0.2, 0.035 + weight * 0.95, 0.1 + weight * 0.2)
+      : localTarget(
+          legSide * 0.13,
+          contactFoot === leg.foot ? 0.11 : 0.035,
+          0.1 - 0.45 * kneel,
+        );
+    target.lerp(ground, planted ? 1 : quiet);
+    if (lifted && i === index) {
+      let desired;
+      if (action.kind === "pickup" && action.hitAt == null) {
+        const f = pickupFoot(p, action, m.ball, time);
+        desired = new T.Vector3(f.x, f.y, f.z);
+      } else if (
+        action.kind === "around" &&
+        action.stage === "orbit" &&
+        action.hitAt == null
+      ) {
+        desired = new T.Vector3(
+          action.orbitCenter.x,
+          0.4,
+          action.orbitCenter.z,
+        );
+      } else if (action.hitAt != null) {
+        desired = new T.Vector3(
+          action.contact?.x ?? m.ball.x,
+          action.contact?.y ?? 0.35,
+          action.contact?.z ?? m.ball.z,
+        );
+        if (action.kind === "pickup")
+          desired.y +=
+            0.2 *
+            Math.sin(
+              Math.PI * T.MathUtils.clamp((time - action.hitAt) / 0.4, 0, 1),
+            );
+        desired.addScaledVector(
+          forward,
+          0.08 * Math.sin((time - action.hitAt) * 8),
+        );
+      } else {
+        const point = new T.Vector3(m.ball.x, m.ball.y - 0.1, m.ball.z);
+        const anticipation = smooth((1.45 - m.ball.y) / 0.9);
+        desired = localTarget(side * 0.14, 0.18, 0.26).lerp(
+          point,
+          anticipation,
+        );
+        if (action.kind === "thigh")
+          desired = localTarget(side * 0.13, 0.39, 0.42);
+        if (action.kind === "heel")
+          desired = localTarget(side * 0.19, 0.38, -0.23);
+        if (bicycle || action.kind === "high-heel") desired = point;
+      }
+      // Keep the foot within the anatomical reach; never chase head-height balls.
+      const delta = desired.clone().sub(new T.Vector3(p.x, 0, p.z));
+      let x = clamp(delta.dot(right), -0.58, 0.58),
+        z = clamp(
+          delta.dot(forward),
+          bicycle || action.kind === "high-heel" ? -0.75 : -0.32,
+          action.dive ? 0.85 : 0.65,
+        );
+      desired = localTarget(
+        x,
+        clamp(
+          desired.y,
+          action.kind === "pickup" ? 0.025 : 0.08,
+          bicycle ? 1.85 : action.kind === "high-heel" ? 1.25 : 1.08,
+        ),
+        z,
+      );
+      target.lerp(desired, weight);
+    }
+    const kneeHint = forward
+      .clone()
+      .addScaledVector(right, legSide * 0.12)
+      .addScaledVector(up, bicycle ? 1.5 * weight : 0);
+    if (action?.kind === "high-heel" && i === index)
+      kneeHint.copy(forward).multiplyScalar(-0.2).addScaledVector(up, -1);
+    leg.hip.userData.kneeForward = kneeHint;
+    correctLeg(leg.hip, leg.shin, leg.foot, contactFoot, target, 1.5, kneeHint);
+    if (
+      i === index &&
+      action?.kind === "around" &&
+      action.stage === "orbit" &&
+      action.hitAt == null
+    )
+      poseAroundLeg(
+        leg,
+        forward,
+        side,
+        (time - action.orbitAt) / action.orbitDuration,
+        weight,
+      );
+    leg.anchor = null;
+  }
   rig.root.updateMatrixWorld(true);
 }

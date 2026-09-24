@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "../shared/protocol.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -70,7 +71,7 @@ function peer(url, token) {
   const ws = new WebSocket(url.replace("http:", "ws:"));
   const received = [];
   ws.on("open", () =>
-    ws.send(JSON.stringify({ type: "auth", token, version: 1 })),
+    ws.send(JSON.stringify({ type: "auth", token, version: PROTOCOL_VERSION })),
   );
   ws.on("message", (data) => received.push(JSON.parse(data)));
   const send = (data) => ws.send(JSON.stringify(data));
@@ -103,7 +104,7 @@ test(
               await fetch(backend + "/futebol/api/" + route, {
                 method: "POST",
                 headers: { Origin: origin },
-                body: JSON.stringify({ version: 1, ...data }),
+                body: JSON.stringify({ version: PROTOCOL_VERSION, ...data }),
               })
             ).json();
           const host = await post("rooms", { duration: 180 });

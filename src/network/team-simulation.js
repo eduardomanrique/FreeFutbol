@@ -1,3 +1,4 @@
+import { stepSpecial } from "../gameplay-actions.js";
 import { initLocomotion, stepLocomotion } from "../locomotion.js";
 import { stepBallMotion } from "../ball-physics.js";
 import {
@@ -171,7 +172,7 @@ export class TeamSimulation {
     const vx = stale ? 0 : cmd.row[5],
       vz = stale ? 0 : cmd.row[6];
     p.moveIntent = { x: vx, z: vz };
-    stepLocomotion(p, vx, vz, dt, {
+    if(!stepSpecial(this.match,p,dt)) stepLocomotion(p, vx, vz, dt, {
       charging: p.ballAction?.stage === "charging",
       charge: p.ballAction?.power || 0,
     });

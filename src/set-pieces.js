@@ -2,6 +2,9 @@ import { initLocomotion, stepLocomotion } from "./locomotion.js";
 import { selectPassTarget } from "./ball-actions.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export function placeSetPiece(m, team, x, z, type) {
+  const starts = m.players.map((q) => ({ x: q.x, z: q.z }));
+  const L = m.field.halfLength,
+    W = m.field.halfWidth;
   const ball = m.ball,
     side = Math.sign(z) || 1,
     end = Math.sign(x) || 1;
@@ -11,15 +14,35 @@ export function placeSetPiece(m, team, x, z, type) {
       (a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z),
     )[0];
   if (type === "corner") {
-    x = end * 45.6;
-    z = side * 29.6;
-  } else z = side * 30;
+    x = end * (L - 0.4);
+    z = side * (W - 0.4);
+  } else if (type === "throw") z = side * W;
+  else {
+    x = clamp(x, -L + 1, L - 1);
+    z = clamp(z, -W + 0.6, W - 0.6);
+  }
   const inward =
-    type === "throw"
+    type === "throw" || type === "kickin"
       ? { x: 0, z: -side }
       : { x: -end * 0.32, z: -side * 0.9474 };
   for (const q of m.players) {
     q.vx = q.vz = 0;
+    q.slide = q.knockdown = q.evade = q.bicycle = q.shield = null;
+    q.sliding = false;
+    if (q !== p) {
+      const dir = team === 0 ? 1 : -1;
+      const attacking = q.team === team;
+      q.x = clamp(
+        q.homeX + dir * (attacking ? L * 0.14 : -L * 0.08) + x * 0.12,
+        -L + 1,
+        L - 1,
+      );
+      q.z = clamp(q.homeZ * 0.85 + z * 0.15, -W + 1, W - 1);
+      if (q.keeper) {
+        q.x = (q.team === 0 ? -1 : 1) * (L - 2);
+        q.z = 0;
+      }
+    }
     q.ballAction = q.ballMotion = q.header = q.throwIn = q.rootWarp = null;
   }
   Object.assign(p, {
@@ -35,12 +58,22 @@ export function placeSetPiece(m, team, x, z, type) {
     );
   mates.slice(0, 3).forEach((q, i) => {
     q.x =
-      type === "corner" ? end * (36 + i * 2) : clamp(x + (i - 1) * 6, -43, 43);
-    q.z = type === "corner" ? (i - 1) * 6 : side * (22 - i * 2);
+      type === "corner"
+        ? end * (L - 10 + i * 2)
+        : clamp(x + (i - 1) * Math.min(6, L * 0.22), -L + 2, L - 2);
+    q.z =
+      type === "corner"
+        ? (i - 1) * Math.min(6, W * 0.35)
+        : side * (W - 8 + i * 2);
   });
   for (const q of m.players) {
     if (q !== p) {
-      const radius = q.team !== team ? (type === "corner" ? 10.2 : 2.2) : 2;
+      const radius =
+        q.team !== team
+          ? type === "corner"
+            ? Math.min(10.2, L * 0.45)
+            : 2.2
+          : 2;
       let dx = q.x - x,
         dz = q.z - z,
         d = Math.hypot(dx, dz);
@@ -54,13 +87,37 @@ export function placeSetPiece(m, team, x, z, type) {
           dz = inward.z;
           d = 1;
         }
-        q.x = clamp(x + (dx / d) * radius, -44, 44);
-        q.z = clamp(z + (dz / d) * radius, -28, 28);
+        q.x = clamp(x + (dx / d) * radius, -L + 1, L - 1);
+        q.z = clamp(z + (dz / d) * radius, -W + 1, W - 1);
       }
     }
     initLocomotion(q);
   }
-  m.setPiece = { type, team, taker: p.id, x, z, startedAt: m.elapsed };
+  const reposition = m.players
+    .filter((q) => q !== p && !(m.training && q.team === 1))
+    .map((q) => ({ id: q.id, from: starts[q.id], to: { x: q.x, z: q.z } }));
+  if (m.training)
+    for (const q of m.players.filter((q) => q.team === 1)) {
+      q.x = starts[q.id].x;
+      q.z = starts[q.id].z;
+      initLocomotion(q);
+    }
+  for (const r of reposition) {
+    const q = m.players[r.id];
+    q.x = r.from.x;
+    q.z = r.from.z;
+    initLocomotion(q);
+  }
+  m.setPiece = {
+    type,
+    team,
+    taker: p.id,
+    x,
+    z,
+    startedAt: m.elapsed,
+    readyAt: m.elapsed + 2.2,
+    reposition,
+  };
   m.restartRestriction = null;
   m.ballFlight++;
   m.lastPass = null;
@@ -88,6 +145,46 @@ export function placeSetPiece(m, team, x, z, type) {
 export function updateSetPiece(m, dt) {
   const sp = m.setPiece,
     p = m.players[sp.taker];
+  if (m.elapsed < (sp.readyAt || 0)) {
+    const t = clamp((m.elapsed - sp.startedAt) / 2.2, 0, 1),
+      blend = t * t * (3 - 2 * t);
+    for (const r of sp.reposition || []) {
+      const q = m.players[r.id],
+        oldX = q.x,
+        oldZ = q.z;
+      q.x = r.from.x + (r.to.x - r.from.x) * blend;
+      q.z = r.from.z + (r.to.z - r.from.z) * blend;
+      q.vx = (q.x - oldX) / dt;
+      q.vz = (q.z - oldZ) / dt;
+      if (Math.hypot(q.vx, q.vz) > 0.1) {
+        const d = Math.hypot(q.vx, q.vz);
+        q.dx = q.vx / d;
+        q.dz = q.vz / d;
+      }
+      q.motion?.update(q, m, dt);
+    }
+    return;
+  }
+  if (sp.reposition) {
+    for (const r of sp.reposition) {
+      const q = m.players[r.id];
+      q.x = r.to.x;
+      q.z = r.to.z;
+      q.vx = q.vz = 0;
+      initLocomotion(q);
+    }
+    sp.reposition = null;
+  }
+  if (sp.type === "penalty") {
+    for (const q of m.players.filter(
+      (q) => q.team !== sp.team && q.keeper && m.isControlled(q),
+    )) {
+      const lateral = m.controls[q.team].lastInput.z || 0;
+      stepLocomotion(q, 0, lateral * 2.6, dt);
+      q.x = (q.team ? 1 : -1) * (m.field.halfLength - 0.5);
+      q.z = clamp(q.z, -m.field.goalHalf + 0.25, m.field.goalHalf - 0.25);
+    }
+  }
   if (!m.isControlled(p) && m.elapsed - sp.startedAt > 1 && !p.ballAction) {
     const q = m.players
       .filter((q) => q.team === sp.team && !q.keeper && q !== p)
@@ -95,7 +192,16 @@ export function updateSetPiece(m, dt) {
         (a, b) =>
           Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z),
       )[0];
-    m.queueAIAction(p, sp.type === "corner" ? "lob" : "pass", q.x, q.z, 0.45);
+    if (sp.type === "free" || sp.type === "penalty")
+      m.queueAIAction(
+        p,
+        "shoot",
+        (p.team === 0 ? 1 : -1) * m.field.halfLength,
+        Math.sin(m.elapsed) * m.field.goalHalf * 0.55,
+        0.65,
+      );
+    else
+      m.queueAIAction(p, sp.type === "corner" ? "lob" : "pass", q.x, q.z, 0.45);
   }
   const a = p.ballAction;
   if (sp.type === "throw") {

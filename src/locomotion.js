@@ -1,3 +1,4 @@
+import { motionAction } from "./action-state.js";
 import { stepBodyExpression } from "./body-expression.js";
 // Reduced-order character physics, in metres / seconds / newtons.
 // Only feet in contact may accelerate the centre of mass horizontally.
@@ -94,7 +95,13 @@ export function ballMotionDuration(p, kind, power = 0) {
       : clamp(0.34 + 0.05 * power - speed * 0.026, 0.16, 0.4);
 }
 export const strikePlantDuration = (p) =>
-  clamp(0.18 - Math.hypot(p.vx, p.vz) * 0.006, 0.12, 0.18);
+  clamp(
+    0.18 +
+      (p.ballAction?.type === "shoot" ? 0.07 * (p.ballAction.power || 0) : 0) -
+      Math.hypot(p.vx, p.vz) * 0.006,
+    0.12,
+    0.25,
+  );
 export function startBallMotion(
   p,
   target,
@@ -140,7 +147,9 @@ export function startBallMotion(
       const foot = l.feet[index],
         other = l.feet[1 - index];
       if (!other.contact || foot.special) return false;
-      const offset = 0.28 * foot.side;
+      const offset =
+        (0.28 + (p.ballAction?.type === "shoot" ? 0.09 * power : 0)) *
+        foot.side;
       const goal = {
         x: target.x + Math.cos(l.heading) * offset,
         z: target.z - Math.sin(l.heading) * offset,
@@ -245,7 +254,7 @@ export function stepLocomotion(
   let l = p.locomotion;
   if (!l || Math.hypot(p.x - l.lastX, p.z - l.lastZ) > 1.5)
     l = initLocomotion(p);
-  if (p.strikePlant && !p.ballAction && !p.ballMotion) {
+  if (p.strikePlant && !motionAction(p) && !p.ballMotion) {
     l.feet[p.strikePlant.foot].special = null;
     p.strikePlant = null;
   }
@@ -253,7 +262,15 @@ export function stepLocomotion(
   l.impact = Math.max(0, (l.impact || 0) - dt * 2.5);
   l.preparation =
     (l.preparation || 0) +
-    ((charging ? charge : 0) - (l.preparation || 0)) * (1 - Math.exp(-dt * 10));
+    ((p.ballAction?.type === "shoot" &&
+    !p.ballAction.firstTime &&
+    p.ballAction.stage === "pending"
+      ? p.ballAction.power
+      : charging
+        ? charge
+        : 0) -
+      (l.preparation || 0)) *
+      (1 - Math.exp(-dt * 10));
   const preparation = l.preparation;
   const speed = Math.hypot(p.vx, p.vz),
     desiredSpeed = Math.hypot(targetX, targetZ);
@@ -272,14 +289,17 @@ export function stepLocomotion(
   const stopping = desiredSpeed < 0.08;
   const agile = !!p.closeControl && speed < 4.2;
   const running = speed > 3.0 && !agile;
-  const cruising = running && p.sprintRequested === false && !p.ballAction;
+  const cruising = running && p.sprintRequested === false && !motionAction(p);
   const interval =
     (agile ? 0.73 : 1) *
     clamp(0.39 - speed * 0.022, 0.205, 0.39) *
     (1 + 0.3 * preparation) *
     0.9;
   l.strideInterval = interval;
-  l.strideReach = 0.4 + 0.15 * preparation;
+  l.strideReach =
+    0.4 +
+    (p.ballAction?.type === "shoot" && !p.ballAction.firstTime ? 0.25 : 0.15) *
+      preparation;
   const flight = running
     ? cruising
       ? 0.006
@@ -310,7 +330,7 @@ export function stepLocomotion(
   l.heading += l.yawVelocity * dt;
   const plantKick = speed < 7 && l.feet[0].contact;
   for (const foot of l.feet) {
-    if (foot.special === "windup" && !p.ballAction) {
+    if (foot.special === "windup" && !motionAction(p)) {
       lift(p, foot, 0.2);
       foot.special = "recover";
     }

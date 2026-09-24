@@ -50,7 +50,8 @@ test("press holds possession; release waits for a free foot and physical contact
   assert.equal(m.lastShot.foot, 0);
   assert.ok(m.lastShot.delay > 0.08);
   assert.equal(m.ball.owner, null);
-  assert.equal(m.lastShot.speed, 27);
+  assert.equal(m.lastShot.speed, 50);
+  assert.equal(m.lastShot.band, "mishit");
   m.physics.dispose();
 });
 test("aim changes do not redirect locomotion while charging; backward aim produces heel pass", () => {
@@ -325,7 +326,7 @@ test("standing strike reuses a valid support but adjusts a misplaced one", () =>
 });
 
 test("charge plants support and winds up the opposite foot; overholding auto-kicks once", () => {
-  for (const type of ["pass", "lob", "shoot"]) {
+  for (const type of ["pass", "lob"]) {
     const m = setup(),
       p = m.players[9];
     m.beginAction(type, {});
@@ -367,7 +368,7 @@ test("weak stationary tap skips planting and uses a short contact gesture", () =
   m.physics.dispose();
 });
 
-test("charge fills in 315ms; running preparation lets ball roll without reversing approach", () => {
+test("charge reaches long-shot window near 315ms; held running shot keeps dribbling", () => {
   const m = setup(),
     p = m.players[9];
   p.vx = 5;
@@ -376,15 +377,17 @@ test("charge fills in 315ms; running preparation lets ball roll without reversin
   m.beginAction("shoot", { x: 1, sprint: true });
   let previous = m.ball.vx;
   for (let i = 0; i < 38; i++) {
+    const previousTouch = m.lastTouch?.time;
     m.update(dt, { x: 1, sprint: true });
-    assert.ok(
-      m.ball.vx <= previous + 0.02 && m.ball.vx >= previous - 0.15,
-      "only natural rolling deceleration before kick",
-    );
+    if (previousTouch === m.lastTouch?.time)
+      assert.ok(
+        m.ball.vx <= previous + 0.02 && m.ball.vx >= previous - 0.15,
+        "only natural rolling deceleration before kick",
+      );
     assert.ok(p.moveIntent.x >= -1e-6, "no backward recovery command");
     previous = m.ball.vx;
   }
-  assert.equal(m.charge, 1);
+  assert.ok(m.charge >= 0.85 && m.charge <= 0.9);
   assert.equal(m.lastShot, null);
   m.releaseAction(0.8);
   contact(m);
@@ -400,13 +403,13 @@ test("shot strength and precision depend on facing, with 40% front and 85% back 
     p.dx = Math.sin(heading);
     p.dz = Math.cos(heading);
     initLocomotion(p);
-    m.shoot(1);
+    m.shoot(0.8);
     contact(m);
     shots.push(m.lastShot);
     m.physics.dispose();
   }
-  assert.equal(shots[0].speed, 27);
-  assert.ok(Math.abs(shots[2].speed - 6.75) < 1e-8);
+  assert.equal(shots[0].speed, (9 + 0.8 ** 0.75 * 36) * 0.6);
+  assert.ok(Math.abs(shots[2].speed - (9 + 0.8 ** 0.75 * 36) * 0.15) < 1e-8);
   assert.ok(shots[0].speed > shots[1].speed && shots[1].speed > shots[2].speed);
   assert.ok(
     shots[0].precision > shots[1].precision &&
@@ -461,7 +464,7 @@ test("buffer expires after 1 second and cancels on reset, cancel or selection ch
   }
 });
 
-test("buffer window is measured from press and isolated per team", () => {
+test("held shot keeps its buffer alive while the other team expires independently", () => {
   const m = setup();
   m.multiplayer = true;
   Object.assign(m.ball, { owner: null, x: 30, z: 20 });
@@ -470,6 +473,8 @@ test("buffer window is measured from press and isolated per team", () => {
   for (let i = 0; i < 110; i++) m.update(dt, {});
   m.releaseAction(1);
   for (let i = 0; i < 11; i++) m.update(dt, {});
+  assert.ok(m.controls[0].bufferedAction);
+  for (let i = 0; i < 121; i++) m.update(dt, {});
   assert.equal(m.controls[0].bufferedAction, null);
   assert.equal(m.controls[1].bufferedAction, null);
   assert.equal(m.charging, false);
@@ -582,8 +587,10 @@ test("a completed strike projects the body forward, follows with the foot and se
     m.beginAction(type, { x: 1 });
     for (let i = 0; i < 24; i++) m.update(dt, { x: 1 });
     assert.ok(
-      p.locomotion.expression.strikeLean > 0,
-      "loads backward before contact",
+      type === "shoot"
+        ? Math.abs(p.locomotion.expression.strikeLean) < 0.001
+        : p.locomotion.expression.strikeLean > 0,
+      "shoot preparation waits for release; passes retain their windup",
     );
     m.releaseAction(0.6);
     contact(m);

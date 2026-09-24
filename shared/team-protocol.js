@@ -6,6 +6,13 @@ export const POSE_FIELDS = [
   "kick",
   "tackle",
   "sliding",
+  "slide",
+  "knockdown",
+  "evade",
+  "bicycle",
+  "celebration",
+  "topSpeed",
+  "secondPress",
   "ballAction",
   "ballMotion",
   "strikePlant",
@@ -38,6 +45,9 @@ export const WORLD_FIELDS = [
   "lastTouch",
   "lastReception",
   "lastAction",
+  "foul",
+  "pendingRestart",
+  "lastTackle",
   "score",
   "mode",
   "elapsed",
@@ -45,6 +55,7 @@ export const WORLD_FIELDS = [
   "restartRestriction",
   "restartTimer",
   "restartTeam",
+  "lastGoalTeam",
   "event",
   "eventTime",
   "sequence",
@@ -112,8 +123,19 @@ const vector = (v, keys = ["x", "z"]) =>
 const foot = (n) => n === 0 || n === 1;
 function validPose(p) {
   if (!object(p) || !safeTree(p)) return false;
-  const booleans = ["sliding", "closeControl", "sprintRequested"];
+  const booleans = [
+    "secondPress",
+    "topSpeed",
+    "sliding",
+    "closeControl",
+    "sprintRequested",
+  ];
   const objects = [
+    "slide",
+    "knockdown",
+    "evade",
+    "bicycle",
+    "celebration",
     "ballAction",
     "ballMotion",
     "strikePlant",
@@ -222,7 +244,9 @@ export function validWorld(s) {
         s.ball.owner >= 0 &&
         s.ball.owner < 22)) &&
     (s.setPiece == null ||
-      (["throw", "corner"].includes(s.setPiece.type) &&
+      (["throw", "corner", "free", "penalty", "kickin"].includes(
+        s.setPiece.type,
+      ) &&
         Number.isInteger(s.setPiece.taker) &&
         s.setPiece.taker >= 0 &&
         s.setPiece.taker < 22 &&

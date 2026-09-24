@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const TICK_RATE = 120;
 export const SNAPSHOT_RATE = 20;
 export const INPUT_TIMEOUT_MS = 500;
@@ -39,6 +39,9 @@ export function parseInput(value) {
     sprint: value.sprint === true,
     jockey: value.jockey === true,
     finesse: value.finesse === true,
+    chip: value.chip === true,
+    secondPress: value.secondPress === true,
+    hands: value.hands === true,
     events: value.events.map((e) => ({
       type: e.type,
       ...(e.type === "begin" ? { action: e.action } : {}),
@@ -47,6 +50,9 @@ export function parseInput(value) {
 }
 // Render state only. Physics, randomness, action clocks and scores never come from clients.
 const playerFields = [
+  "renderId",
+  "altinhaPose",
+  "volleyPending",
   "id",
   "team",
   "number",
@@ -63,6 +69,13 @@ const playerFields = [
   "kick",
   "tackle",
   "sliding",
+  "slide",
+  "knockdown",
+  "evade",
+  "bicycle",
+  "celebration",
+  "topSpeed",
+  "secondPress",
   "locomotion",
   "ballAction",
   "ballMotion",
@@ -90,11 +103,16 @@ export function renderState(match, tick, acknowledgements) {
     tick,
     acknowledgements,
     mode: match.mode,
+    variant: match.variant,
+    footvolley: match.footvolley,
     elapsed: match.elapsed,
     duration: match.duration,
     score: match.score,
     ball: match.ball,
     setPiece: match.setPiece,
+    foul: match.foul,
+    pendingRestart: match.pendingRestart,
+    lastTackle: match.lastTackle,
     controls: match.controls.map((c) => ({
       selected: c.selected,
       charge: c.charge,

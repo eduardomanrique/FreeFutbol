@@ -48,8 +48,12 @@ test("team one shots aim at the left goal and tackles retain correct last team",
     m.cancelAction();
     m.ball.owner = null;
     m.ball.lastTeam = 0;
+    const p = m.players[m.selected];
+    Object.assign(m.ball, { x: p.x + p.dx * 1.5, z: p.z + p.dz * 1.5 });
     m.tackle();
   });
+  for (let i = 0; i < 30 && m.ball.lastTeam !== 1; i++)
+    m.update(1 / 120, {}, {});
   assert.equal(m.ball.lastTeam, 1);
   m.physics.dispose();
 });
@@ -70,6 +74,9 @@ test("input protocol rejects invalid axes/events and strips client authority", (
     sprint: false,
     jockey: false,
     finesse: false,
+    chip: false,
+    secondPress: false,
+    hands: false,
     events: [],
   });
   for (const patch of [

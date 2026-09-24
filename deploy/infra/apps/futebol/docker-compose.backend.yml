@@ -16,7 +16,7 @@ services:
     cpus: 1.0
     pids_limit: 96
     environment:
-      ALLOWED_ORIGINS: https://kmworks.dev,https://www.kmworks.dev
+      ALLOWED_ORIGINS: https://kmworks.dev,https://www.kmworks.dev,capacitor://localhost,https://localhost
       MAX_ROOMS: '8'
       MAX_MATCHES: '2'
       TRUST_PROXY: '1'

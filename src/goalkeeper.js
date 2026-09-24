@@ -36,6 +36,20 @@ export function keeperControl(p, b, time) {
     hands: [],
     previousHands: [],
   });
+  const fieldLength = p.field?.halfLength ?? 46,
+    areaDepth = Math.min(16.5, fieldLength * 0.35);
+  const nearArea =
+    (b.x + dir * fieldLength) * dir >= 0 &&
+    (b.x + dir * fieldLength) * dir < areaDepth &&
+    Math.abs(b.z) <
+      Math.min(p.field?.halfWidth ?? 30, (p.field?.goalHalf ?? 3.66) + 3);
+  g.smother =
+    g.mode === "set" &&
+    !g.holding &&
+    b.lastTeam !== p.team &&
+    b.y < 1.2 &&
+    nearArea &&
+    Math.hypot(b.x - p.x, b.z - p.z) < 7;
   const prediction = predictKeeperIntercept(p, b);
   g.prediction = prediction;
   if (
@@ -44,7 +58,7 @@ export function keeperControl(p, b, time) {
     time > (g.cooldown || 0) &&
     prediction &&
     prediction.time < 0.65 &&
-    Math.abs(prediction.z) < 4.5 &&
+    Math.abs(prediction.z) < (p.field?.goalHalf ?? 3.66) + 0.84 &&
     prediction.y < 3.1
   ) {
     g.mode = "prepare";
@@ -52,7 +66,7 @@ export function keeperControl(p, b, time) {
     g.origin = { x: p.x, z: p.z };
     g.target = prediction;
     g.side = Math.sign(prediction.z - p.z) || 1;
-    g.duration = clamp(prediction.time - 0.26, 0.14, 0.56);
+    g.duration = clamp(prediction.time - 0.28, 0.14, 0.56);
     const reach = Math.abs(prediction.z - p.z) > 0.6 ? 0.75 : 0;
     g.vz = clamp((prediction.z - g.side * reach - p.z) / g.duration, -3.7, 3.7);
     g.vx = 0;
@@ -70,12 +84,22 @@ export function keeperControl(p, b, time) {
     g.result = null;
   }
   // Cover the angle; never chase the ball to the corner before its flight arrives.
-  const x = -dir * 43.6,
-    z = clamp((b.z * 2.4) / Math.max(3, Math.abs(b.x + dir * 46)), -2.8, 2.8);
+  const L = p.field?.halfLength ?? 46,
+    G = p.field?.goalHalf ?? 3.66;
+  const x = -dir * (L - Math.min(2.4, L * 0.1)),
+    z = clamp(
+      (b.z * 2.4) / Math.max(3, Math.abs(b.x + dir * L)),
+      -G + 0.6,
+      G - 0.6,
+    );
   return {
-    x: g.mode === "set" ? x : p.x,
-    z: g.mode === "set" ? z : p.z,
-    speed: g.holding ? 0 : 3.8,
+    x: g.smother
+      ? clamp(b.x, -fieldLength + 0.8, fieldLength - 0.8)
+      : g.mode === "set"
+        ? x
+        : p.x,
+    z: g.smother ? b.z : g.mode === "set" ? z : p.z,
+    speed: g.holding ? 0 : g.smother ? 6.2 : 3.8,
   };
 }
 export function stepKeeper(p, b, time, dt) {
@@ -88,8 +112,8 @@ export function stepKeeper(p, b, time, dt) {
   p.dz = 0;
   if (g.mode === "prepare") {
     p.vx = p.vz = 0;
-    g.height = 1.02 - 0.13 * smooth((time - g.start) / 0.26);
-    if (time - g.start >= 0.26) {
+    g.height = 1.02 - 0.13 * smooth((time - g.start) / 0.28);
+    if (time - g.start >= 0.28) {
       g.mode = "dive";
       g.launch = time;
       g.origin = { x: p.x, z: p.z };
@@ -128,7 +152,7 @@ export function stepKeeper(p, b, time, dt) {
     }
   }
   if (g.mode === "set") {
-    g.height = 1.02;
+    g.height = g.smother ? 0.36 : 1.02;
     g.roll = 0;
   }
   p.locomotion.lastX = p.x;
@@ -137,9 +161,11 @@ export function stepKeeper(p, b, time, dt) {
   const lateral = -Math.sin(g.roll),
     up = Math.cos(g.roll);
   const reaching = (g.mode === "dive" || g.mode === "prepare") && !g.holding;
-  const target = reaching
-    ? g.target
-    : { x: p.x + dir * 0.4, y: g.mode === "recover" ? 0.15 : 1.05, z: p.z };
+  const target = g.smother
+    ? b
+    : reaching
+      ? g.target
+      : { x: p.x + dir * 0.4, y: g.mode === "recover" ? 0.15 : 1.05, z: p.z };
   g.hands = [1, -1].map((side) => {
     const localSide = side * 0.2;
     const shoulder = {
@@ -151,7 +177,10 @@ export function stepKeeper(p, b, time, dt) {
       dy = target.y - shoulder.y,
       dz = target.z + side * 0.085 - shoulder.z;
     const distance = Math.hypot(dx, dy, dz),
-      scale = Math.min(1, 0.64 / Math.max(0.001, distance));
+      scale = Math.min(
+        1,
+        (g.smother ? 1.02 : 0.64) / Math.max(0.001, distance),
+      );
     return {
       x: shoulder.x + dx * scale,
       y: Math.max(0.09, shoulder.y + dy * scale),

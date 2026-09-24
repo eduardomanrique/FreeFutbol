@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from "../shared/protocol.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
@@ -19,7 +20,7 @@ test(
         await fetch(base + path, {
           method: "POST",
           headers: { Origin: origin, "Content-Type": "application/json" },
-          body: JSON.stringify({ version: 1, teamProtocol: 1, ...body }),
+          body: JSON.stringify({ version: PROTOCOL_VERSION, teamProtocol: 1, ...body }),
         })
       ).json();
     }
@@ -32,7 +33,7 @@ test(
       ws.on("message", (b) => inbox.push(JSON.parse(b)));
       ws.on("open", () =>
         ws.send(
-          JSON.stringify({ type: "auth", version: 1, teamProtocol: 1, token }),
+          JSON.stringify({ type: "auth", version: PROTOCOL_VERSION, teamProtocol: 1, token }),
         ),
       );
       ws.json = (o) => ws.send(JSON.stringify(o));

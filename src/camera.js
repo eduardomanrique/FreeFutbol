@@ -18,7 +18,7 @@ export function followCamera(
       target.set(ball.x + leadX, ball.y, ball.z + leadZ);
       cam
         .set(3, (wide ? 69 : 25) - groundHeight, wide ? 66 : 31)
-        .multiplyScalar(0.8)
+        .multiplyScalar(wide ? 0.65 : 0.55)
         .add(target);
     } else {
       const bx = THREE.MathUtils.clamp(

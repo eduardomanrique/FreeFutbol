@@ -60,10 +60,10 @@
         </div>
         <section class="hero">
           <div class="eyebrow"><span></span> FUTEBOL, NA SUA ESSÊNCIA</div>
-          <h1>O jogo<br />começa <em>aqui.</em></h1>
+          <h1>Seu jogo.<br />Seu <em>universo.</em></h1>
           <p>
-            O campo é seu. Encontre o passe.<br />Sinta o jogo. Faça a
-            diferença.
+            Da rua à areia. Da quadra ao campo.<br />Solte o chute. Acenda o
+            jogo.
           </p>
           <div class="hero-bottom">
             <span class="small-icon">↗</span
@@ -91,10 +91,42 @@
               <span>COMPUTADOR</span>
             </div>
           </div>
+          <div class="mode-grid" aria-label="Escolha seu campo">
+            <button data-mode="match" aria-pressed="true">
+              <strong>CAMPO</strong><small>11 × 11 · clássico</small>
+            </button>
+            <button data-mode="street" aria-pressed="false">
+              <strong>RUA</strong><small>3 × 3 · golzinho</small>
+            </button>
+            <button data-mode="sand" aria-pressed="false">
+              <strong>AREIA</strong><small>5 × 5 · pé na areia</small>
+            </button>
+            <button data-mode="court" aria-pressed="false">
+              <strong>QUADRA</strong><small>5 × 5 · jogo rápido</small>
+            </button>
+            <button data-mode="duel" aria-pressed="false">
+              <strong>GOL A GOL</strong><small>1 × 1 · parque</small>
+            </button>
+            <button data-mode="futevolei" aria-pressed="false">
+              <strong>FUTEVÔLEI</strong><small>2 × 2 · sobre a rede</small>
+            </button>
+            <button data-mode="altinha" aria-pressed="false">
+              <strong>ALTINHA</strong><small>4 na roda · solo</small>
+            </button>
+          </div>
           <div class="mode-select">
             <label for="game-mode">Modo de jogo</label>
             <select id="game-mode" aria-describedby="game-mode-help">
-              <option value="match">Partida</option>
+              <option value="match">Campo · 11 × 11</option>
+              <option value="street">Rua · 3 × 3 sem goleiro</option>
+              <option value="sand">Areia · 5 × 5 com goleiro</option>
+              <option value="court">Quadra · 5 × 5 com goleiro</option>
+              <option value="duel">Gol a gol · 1 × 1 no parque</option>
+              <option value="futevolei">Futevôlei · duplas na praia</option>
+              <option value="futevolei-online">
+                Futevôlei online · 2 a 4 pessoas
+              </option>
+              <option value="altinha">Altinha · roda na praia</option>
               <option value="training">Arena de treino</option>
               <option value="online">Online · por código</option>
             </select>
@@ -117,8 +149,7 @@
               </select></label
             >
             <div>
-              <span>Estádio</span
-              ><strong>Arena Campo <span class="sun">☀</span></strong>
+              <span>Local</span><strong id="venue-name">Arena Campo</strong>
             </div>
           </div>
           <div id="online-panel" hidden>
@@ -181,6 +212,16 @@
         </div>
       </main>
       <div id="hud" hidden>
+        <div id="volley-hud" hidden aria-live="polite"></div>
+        <div id="altinha-hud" hidden>
+          <span>ALTINHA · FREESTYLE</span><strong id="altinha-points">0</strong>
+          <div id="altinha-stats">COMBO 0 · RECORDE 0</div>
+          <p id="altinha-hint">Toque para começar</p>
+          <div id="altinha-power" hidden>
+            <span>FORÇA DO PASSE</span>
+            <div><i id="altinha-power-fill"></i></div>
+          </div>
+        </div>
         <div class="scoreboard">
           <span class="competition" id="mode-indicator">AMISTOSO</span
           ><span class="team-name home-team">ATL</span
@@ -211,13 +252,16 @@
           </svg>
         </div>
         <div class="power-wrap" id="power-wrap" hidden>
-          <span>FORÇA DO CHUTE</span>
+          <span id="power-label">FORÇA DO CHUTE</span>
           <div><i id="power-fill"></i></div>
         </div>
         <div class="quick-controls">
           <span><kbd>W A S D</kbd> Mover</span><span><kbd>J</kbd> Passe</span
           ><span><kbd>ESPAÇO</kbd> Chute</span><span><kbd>Q</kbd> Trocar</span
-          ><span><kbd>SHIFT</kbd> Correr</span>
+          ><span><kbd>SHIFT</kbd> Correr</span
+          ><span><kbd>Q + ESPAÇO</kbd> Cavadinha</span
+          ><span><kbd>E</kbd> 2º defensor</span
+          ><span><kbd>H</kbd> Mãos (gol a gol)</span>
         </div>
       </div>
       <div id="touch-controls" aria-label="Controles por toque" hidden>
@@ -230,12 +274,25 @@
           <i></i>
         </div>
         <div class="touch-actions">
+          <button data-touch="volley-pass" data-volley hidden>Passe</button
+          ><button data-touch="volley-lob" data-volley hidden>Alto</button
+          ><button data-touch="volley-shoot" data-volley hidden>Ataque</button
+          ><button data-touch="volley-switch" data-volley hidden>Trocar</button>
+          <button data-touch="keep" data-altinha hidden>Dominar</button>
+          <button data-touch="style" data-altinha hidden>Estilo</button>
+          <button data-touch="trick" data-altinha hidden>Truque</button>
+          <button data-touch="pass" data-altinha hidden>Passar</button>
           <button data-touch="switch" data-possession="defend" hidden>
             Trocar
           </button>
           <button data-touch="tackle" data-possession="defend" hidden>
-            Desarme
+            Carrinho
           </button>
+          <button data-touch="hands" hidden>Mãos</button>
+          <button data-touch="secondPress" data-possession="defend" hidden>
+            Pressão<small>2º defensor</small>
+          </button>
+          <button data-touch="chip" data-possession="attack">Cavadinha</button>
           <button data-touch="shield" data-possession="attack">Proteger</button>
           <button data-touch="lob" data-possession="attack">Alto</button>
           <button data-touch="pass" data-possession="attack">Passe</button>

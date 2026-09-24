@@ -1,3 +1,5 @@
+import { shotBand } from "./ball-actions.js";
+import { modeConfig } from "./modes.js";
 import { loadAthleteAssets } from "./skinned-athlete.js";
 import "@fontsource/barlow-condensed/latin-700.css";
 import "@fontsource/barlow-condensed/latin-500.css";
@@ -11,6 +13,7 @@ import { Stadium } from "./scene.js";
 import { TouchInput } from "./touch.js";
 import { possessionTeam } from "./possession.js";
 import { ControllerInput } from "./gamepad.js";
+import "./native-gamepad.js";
 import { Calibration, CALIBRATION_STEPS } from "./calibration.js";
 const $ = (id) => document.getElementById(id);
 const match = new Match();
@@ -51,17 +54,24 @@ const online = new OnlineClient({
     $("online-members").textContent = room.players
       .map(
         (p, i) =>
-          `${i === 0 ? "Atlético" : "União"}: ${!p ? "vaga livre" : !p.connected ? "reconectando" : p.ready ? "pronto" : "na sala"}`,
+          `${room.mode === "futevolei" ? (i < 2 ? "Atlético" : "União") + " " + ((i % 2) + 1) : i === 0 ? "Atlético" : "União"}: ${!p ? (room.mode === "futevolei" ? "IA" : "vaga livre") : !p.connected ? "reconectando" : p.ready ? "pronto" : "na sala"}`,
       )
       .join(" · ");
     $("online-ready").hidden = room.status !== "waiting";
-    $("online-ready").textContent = room.players[team]?.ready
+    $("online-ready").textContent = room.players[online.playerSlot ?? team]
+      ?.ready
       ? "Ainda não estou pronto"
       : "Estou pronto";
-    $("online-start").hidden = team !== 0 || room.status !== "waiting";
-    $("online-start").disabled = !room.players.every(
-      (p) => p?.connected && p.ready,
-    );
+    $("online-start").hidden =
+      (online.playerSlot ?? team) !== 0 || room.status !== "waiting";
+    $("online-start").disabled =
+      room.mode === "futevolei"
+        ? !(
+            room.players.some((p) => p?.team === 0 && p.ready && p.connected) &&
+            room.players.some((p) => p?.team === 1 && p.ready && p.connected) &&
+            room.players.filter(Boolean).every((p) => p.ready && p.connected)
+          )
+        : !room.players.every((p) => p?.connected && p.ready);
     $("online-lobby").hidden = false;
     $("online-entry").hidden = true;
     $("game-mode").disabled = true;
@@ -105,8 +115,22 @@ const touch = new TouchInput($("touch-controls"), {
   active: () => mobile && match.mode === "playing" && !modalType,
   rotated: () => document.body.classList.contains("landscape-fallback"),
   press(action) {
+    if (match.field.footvolley) {
+      volleyAction(action.replace("volley-", ""));
+      return;
+    }
+    if (match.field.altinha) {
+      match.altinhaAction(
+        action === "pass" ? "pass-start" : action,
+        readInput(),
+      );
+      return;
+    }
     if (action === "switch") return gameAction("switchPlayer");
+    if (action === "hands" || action === "secondPress") return;
     if (action === "tackle") return gameAction("tackle");
+    const button = action;
+    if (action === "chip") action = "shoot";
     if (!["pass", "lob", "through", "shoot"].includes(action)) return;
     if (possessionTeam(match) !== (online.active ? online.team : 0)) {
       if (action === "shoot" || action === "lob")
@@ -118,13 +142,18 @@ const touch = new TouchInput($("touch-controls"), {
       shotStartedAt = performance.now();
       shotReleaseDelay = null;
       shotSource = "touch";
-      actionButton = action;
+      actionButton = button;
     }
   },
   release(action) {
+    if (match.field.altinha && action === "pass") {
+      match.altinhaAction("pass-release", readInput());
+      return;
+    }
     if (shotSource === "touch" && actionButton === action) releaseShot();
   },
   cancel(action) {
+    if (match.field.altinha) match.altinhaAction("pass-cancel");
     if (shotSource === "touch" && (!action || action === actionButton)) {
       gameAction("cancelAction");
       shotSource = actionButton = shotReleaseDelay = null;
@@ -179,10 +208,18 @@ async function enterOnline(join) {
     const code = join ? $("room-code").value.trim().toUpperCase() : "";
     if (join && !/^[A-Z2-9]{6}$/.test(code))
       throw new Error("Digite o código de 6 caracteres.");
+    match.start(
+      360,
+      "normal",
+      false,
+      $("game-mode").value === "futevolei-online" ? "futevolei" : "match",
+    );
+    match.mode = "home";
     await online.enter(
       code,
       Number($("duration").value),
       $("network-mode").value,
+      $("game-mode").value === "futevolei-online" ? "futevolei" : "match",
     );
   } catch (error) {
     $("online-message").textContent = error.message;
@@ -196,7 +233,7 @@ $("online-ready").onclick = () => {
   mobileFullscreen();
   online.send({
     type: "ready",
-    value: !online.room?.players[online.team]?.ready,
+    value: !online.room?.players[online.playerSlot ?? online.team]?.ready,
   });
 };
 $("online-start").onclick = () => {
@@ -242,26 +279,72 @@ function setPlaying(on) {
       document.exitFullscreen?.().catch(() => {});
   }
 }
+function volleyAction(type) {
+  if (online.active)
+    return online.action(
+      type === "switch" ? "switch" : "begin",
+      type === "switch" ? undefined : type,
+    );
+  return match.volleyAction(type, readInput());
+}
 function updateModeDescription() {
-  const isOnline = $("game-mode").value === "online";
+  const config = modeConfig($("game-mode").value.replace("-online", ""));
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.mode === $("game-mode").value),
+    );
+  });
+  document.querySelector(".hero-bottom > span:last-child").innerHTML =
+    config.footvolley
+      ? "DUPLAS NA PRAIA<br/><b>Três toques para devolver.</b>"
+      : config.altinha
+        ? "ALTINHA EM RODA<br/><b>Não deixe a bola cair.</b>"
+        : `${config.players} CONTRA ${config.players}<br/><b>${config.keeper ? "Com goleiros." : "Golzinho · sem goleiro."}</b>`;
+  const isOnline =
+    $("game-mode").value === "online" ||
+    $("game-mode").value === "futevolei-online";
   document.body.classList.toggle("online-mode", isOnline);
+  document.body.classList.toggle("altinha-selected", !!config.altinha);
   document.querySelector(".hero-bottom b").textContent = isOnline
     ? "Você contra outra pessoa."
-    : "Você contra a máquina.";
+    : config.altinha
+      ? "Não deixe a bola cair."
+      : "Você contra a máquina.";
   $("online-panel").hidden = !isOnline;
   $("connection-label").textContent = isOnline ? "ONLINE" : "LOCAL";
   document.querySelector(".card-top .chip").textContent = isOnline
     ? "ONLINE"
-    : "AMISTOSO";
+    : config.name.toUpperCase();
   $("start-btn").hidden = isOnline;
-  $("difficulty").disabled = isOnline;
+  $("difficulty").disabled = isOnline || config.altinha;
   const training = $("game-mode").value === "training";
   $("game-mode-help").textContent = training
     ? "Adversários parados, incluindo o goleiro. Treino sem limite de tempo."
-    : isOnline
-      ? "Convide alguém e jogue com um time de cada lado."
-      : "Partida com adversários em movimento e tempo regulamentar.";
-  $("duration").disabled = training;
+    : config.footvolley
+      ? "2 × 2 · até 15 pontos, com dois de vantagem. Passe, levante e ataque por cima da rede. Solo com IA ou escolha Futevôlei online no seletor."
+      : isOnline
+        ? "Convide alguém e jogue com um time de cada lado."
+        : config.altinha
+          ? "Controle a roda: ao passar, você assume o recebedor. Domine, faça manobras ou devolva de primeira. Caiu, todos recomeçam."
+          : config.duel
+            ? "1 contra 1 no parque. Cada um no seu lado; busque a bola fora, mas chute de dentro da quadra. Mãos só na área: fora dela é pênalti."
+            : `${config.name} · ${config.players} contra ${config.players} · ${config.halfLength * 2} × ${config.halfWidth * 2} m. ${config.keeper ? "Com goleiros." : "Gol no caixote, sem goleiro. A calçada devolve a bola; por cima é lateral. Reposição com os pés."}`;
+  $("venue-name").textContent =
+    $("game-mode").value === "match" ||
+    $("game-mode").value === "training" ||
+    $("game-mode").value === "online"
+      ? "Arena Campo"
+      : {
+          street: "Praça Neon",
+          sand: "Praia Solar",
+          court: "Quadra Aurora",
+          duel: "Parque das Mangueiras",
+          altinha: "Praia do Freestyle",
+          futevolei: "Arena Maré",
+          "futevolei-online": "Arena Maré",
+        }[$("game-mode").value];
+  $("duration").disabled = training || config.altinha || config.footvolley;
   $("duration").setAttribute(
     "aria-label",
     training ? "Duração ignorada na Arena de treino" : "Duração da partida",
@@ -269,7 +352,7 @@ function updateModeDescription() {
 }
 function start() {
   mobileFullscreen();
-  if ($("game-mode").value === "online") return;
+  if (["online", "futevolei-online"].includes($("game-mode").value)) return;
   if (online.active) online.leave();
   match.activeTeam = 0;
   match.multiplayer = false;
@@ -281,12 +364,14 @@ function start() {
     Number($("duration").value),
     $("difficulty").value,
     $("game-mode").value === "training",
+    $("game-mode").value,
   );
   setPlaying(true);
   beep(1700, 0.3);
 }
 function showModal(type) {
   touch.reset();
+  if (match.field.altinha) match.altinhaAction("pass-cancel");
   if (modalType === null) {
     previousMode = match.mode;
     if (!online.active && (match.mode === "playing" || match.mode === "goal"))
@@ -318,6 +403,9 @@ function showModal(type) {
         ["Passe em profundidade", "Y / I"],
         ["Proteger / marcar", "LT"],
         ["Chute colocado · segurar RB ao soltar X", "RB + X"],
+        ["Cavadinha · segurar LB durante o chute", "LB + X / Q + ESPAÇO"],
+        ["Pressão do segundo defensor · segurar", "RB / E"],
+        ["Mãos no gol a gol · fora da área é pênalti", "Y / H"],
         ["Pausar", "MENU / ESC"],
         ["Tela cheia", "F"],
       ]
@@ -330,12 +418,18 @@ function showModal(type) {
   }
   if (type === "controls" && mobile) {
     body =
-      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Com posse, use Passe, Alto e Chute; mantenha Proteger pressionado para proteger a bola. Segure os botões de passe ou chute para carregar e solte para executar; use o analógico para mirar. Em cruzamentos, pressione Chute antes da chegada para cabecear ao gol, ou Passe para escorar. Sem posse, aparecem apenas Trocar e Desarme. Durante um passe, os botões continuam no modo do time que tocou por último. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
+      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Com posse, use Passe, Alto e Chute; mantenha Proteger pressionado para proteger a bola. Segure os botões de passe ou chute para carregar e solte para executar; use o analógico para mirar. Em cruzamentos, pressione Chute antes da chegada para cabecear; de costas para o gol e com espaço, uma bola adequada pode virar bicicleta. Passe escora. Riscos azuis indicam velocidade máxima. Cavadinha faz um chute por cobertura. Sem posse, segure Pressão para chamar o segundo defensor (marcado em azul); Trocar e Carrinho continuam disponíveis. No gol a gol, Mãos tenta segurar a bola: fora da área é pênalti. Durante um passe, os botões continuam no modo do time que tocou por último. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
   }
+  if (type === "controls" && match.field.footvolley)
+    body =
+      '<p class="modal-note">Futevôlei 2 × 2: até três toques, sem repetir o mesmo jogador. J / A: passe. L / B: levantamento. Espaço / X: ataque e saque. Q / LB: trocar atleta no Solo. No celular, use Passe, Alto e Ataque. Mova-se até a bola; ao pedir o toque, o atleta ajusta a aproximação curta. Online, cada pessoa controla seu próprio atleta. Vence quem chegar a 15 com dois pontos de vantagem.</p>';
   if (type === "settings") {
     $("modal-title").textContent = "Do seu jeito";
     body = `<label class="setting">Qualidade gráfica<select id="quality"><option value="high">Alta</option><option value="medium">Equilibrada</option><option value="low">Desempenho</option></select></label><button id="calibrate-controller" class="secondary">Configurar botões do controle</button><p class="modal-note">Esquema alternativo: X chuta, B cruza, Y lança; RT corre e LT protege. Use a configuração guiada se os gatilhos ou botões estiverem trocados.</p><label class="setting">Câmera<select id="camera"><option value="broadcast">Transmissão</option><option value="tactical">Tática</option></select></label><p class="modal-note">O modo Desempenho reduz a resolução e desativa sombras. A simulação mantém a mesma precisão em todas as qualidades.</p>`;
   }
+  if (type === "controls" && match.field.altinha)
+    body =
+      '<p class="modal-note">Dominar: J / A, ou Dominar no celular. Mantém a bola, sem pontos. Estilo: Espaço / X; direcione para os lados para variar ou para baixo para calcanhar. Sem direção, uma bola alta permite cabeçada. Truque: L / B, ou Truque; peça a volta ao mundo quando a bola estiver alta, começando a descer. Passar: segure K / Y, ou Passar, para medir a força e solte para executar; direcione para escolher o parceiro. Mais força deixa a bola mais alta e longa. A trajetória pode variar: mova o recebedor para buscar a bola. Cabeça e ombro têm uma aproximação automática curta, com flexão do corpo para encaixar o contato. Ao passar, o controle muda para o recebedor. Pode devolver de primeira ou dominar antes. Aproxime-se da bola e toque no momento certo. Repetir reduz a recompensa; se cair, a tentativa zera. O recorde fica salvo neste aparelho.</p>';
   if (type === "pause") {
     $("modal-title").textContent = "Respira. O jogo espera.";
     body =
@@ -443,6 +537,13 @@ $("controller-status").onclick = () =>
       ? "settings"
       : "controls",
   );
+document.querySelectorAll("[data-mode]").forEach(
+  (button) =>
+    (button.onclick = () => {
+      $("game-mode").value = button.dataset.mode;
+      updateModeDescription();
+    }),
+);
 $("start-btn").onclick = start;
 $("game-mode").addEventListener("change", updateModeDescription);
 $("pause-btn").onclick = pause;
@@ -497,6 +598,30 @@ window.addEventListener("keydown", (e) => {
   }
   keys.add(e.code);
   if (match.mode !== "playing" || modalType || e.repeat) return;
+  if (match.field.footvolley) {
+    const action = {
+      KeyJ: "pass",
+      KeyL: "lob",
+      Space: "shoot",
+      KeyQ: "switch",
+    }[e.code];
+    if (action) volleyAction(action);
+    return;
+  }
+  if (match.field.altinha) {
+    const action = {
+      KeyJ: "keep",
+      Space: "style",
+      KeyL: "trick",
+      KeyK: "pass",
+    }[e.code];
+    if (action)
+      match.altinhaAction(
+        action === "pass" ? "pass-start" : action,
+        readInput(),
+      );
+    return;
+  }
   if (e.code === "KeyQ") gameAction("switchPlayer");
   if (e.code === "KeyX") gameAction("tackle");
   const type = { KeyJ: "pass", KeyL: "lob", Space: "shoot", KeyI: "through" }[
@@ -511,6 +636,8 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.code);
+  if (match.field.altinha && e.code === "KeyK")
+    match.altinhaAction("pass-release", readInput());
   if (e.code === actionButton && shotSource === "keyboard") {
     releaseShot();
   }
@@ -549,6 +676,15 @@ function readInput() {
   input.sprint ||= !!controllerState.held.sprint || !!touch.held.sprint;
   input.jockey = !!controllerState.held.jockey || !!touch.held.shield;
   input.finesse = !!controllerState.held.finesse;
+  input.chip =
+    !!controllerState.held.switch || keys.has("KeyQ") || !!touch.held.chip;
+  input.secondPress =
+    !!controllerState.held.finesse ||
+    keys.has("KeyE") ||
+    !!touch.held.secondPress;
+  input.hands =
+    match.field.duel &&
+    (!!controllerState.held.through || keys.has("KeyH") || !!touch.held.hands);
   return input;
 }
 function step(dt) {
@@ -567,14 +703,114 @@ function step(dt) {
   if (match.mode === "finished" && !modalType) showModal("finished");
 }
 function updateHUD() {
+  const volley = !!match.field.footvolley;
+  $("volley-hud").hidden = !volley;
+  document
+    .querySelectorAll("[data-volley]")
+    .forEach((b) => (b.hidden = !volley));
+  document.body.classList.toggle(
+    "volley-playing",
+    volley && match.mode !== "home",
+  );
+  if (volley) {
+    document
+      .querySelectorAll(".touch-actions button:not([data-volley])")
+      .forEach((b) => (b.hidden = true));
+    $("altinha-hud").hidden = true;
+    document.body.classList.remove("altinha-playing");
+    const f = match.footvolley;
+    $("score").innerHTML = `${match.score[0]} <span>:</span> ${match.score[1]}`;
+    $("match-clock").textContent = "ATÉ 15";
+    document.querySelector(".period").textContent = "2 × 2";
+    $("volley-hud").textContent =
+      `${f.phase === "serve" ? "SAQUE" : f.phase === "point" ? f.reason : "TOQUES"} · ${f.touches[0]}/3 × ${f.touches[1]}/3`;
+    $("event-toast").textContent = match.event;
+    $("event-toast").classList.toggle("visible", match.eventTime > 0);
+    $("player-name").textContent = match.players[match.selected]?.name || "";
+    $("player-number").textContent =
+      match.players[match.selected]?.number || "";
+    $("player-team").textContent =
+      match.activeTeam === 0 ? "ATLÉTICO" : "UNIÃO";
+    $("possession").textContent =
+      f.phase === "serve"
+        ? "SAQUE"
+        : f.touches[match.activeTeam] >= 2
+          ? "ATAQUE"
+          : f.lastTeam === match.activeTeam
+            ? "LEVANTE"
+            : "RECEPÇÃO";
+    document.querySelector(".quick-controls").innerHTML =
+      "<span><kbd>J / A</kbd> Passe</span><span><kbd>L / B</kbd> Alto</span><span><kbd>ESPAÇO / X</kbd> Ataque / saque</span><span><kbd>Q / LB</kbd> Trocar</span>";
+    document.querySelector('[data-touch="volley-switch"]').hidden =
+      online.active;
+    touch.variant = "futevolei";
+    return;
+  }
+  if (touch.variant === "futevolei")
+    document.querySelector(".quick-controls").innerHTML = keyboardHints;
+
+  const solo = !!match.field.altinha;
+  document.body.classList.toggle(
+    "altinha-playing",
+    solo && match.mode !== "home",
+  );
+  $("altinha-hud").hidden = !solo;
+  document
+    .querySelectorAll("[data-altinha]")
+    .forEach((b) => (b.hidden = !solo));
+  if (solo) {
+    document
+      .querySelectorAll(".touch-actions button:not([data-altinha])")
+      .forEach((b) => (b.hidden = true));
+    const s = match.altinha;
+    $("altinha-points").textContent = s.points;
+    $("altinha-stats").textContent = `COMBO ${s.combo} · RECORDE ${s.best}`;
+    $("altinha-power").hidden = !s.charging;
+    $("altinha-power-fill").style.width = `${s.charge * 100}%`;
+    $("altinha-hint").textContent =
+      s.phase === "ready"
+        ? "Levantar com estilo · J / A / Dominar"
+        : s.phase === "failed"
+          ? `Caiu! Última tentativa: ${s.lastAttempt}`
+          : s.phase === "serving"
+            ? "Preparando a levantada…"
+            : s.charging
+              ? "Solte para passar · mais força, mais alto e longe"
+              : s.pending
+                ? `${s.pending.label}…`
+                : match.ball.vy < 0
+                  ? "Bola descendo · escolha o toque"
+                  : "Prepare o próximo toque";
+    $("event-toast").textContent = match.event;
+    $("event-toast").classList.toggle("visible", match.eventTime > 0);
+    document.querySelector(".quick-controls").innerHTML =
+      "<span><kbd>J / A</kbd> Dominar · 0 pontos</span><span><kbd>ESPAÇO / X</kbd> Estilo + direção</span><span><kbd>L / B</kbd> Volta ao mundo</span><span><kbd>K / Y</kbd> Segure e solte · passe</span>";
+    touch.variant = "altinha";
+    return;
+  }
+  if (touch.variant === "altinha")
+    document.querySelector(".quick-controls").innerHTML = keyboardHints;
   const attacking = possessionTeam(match) === (online.active ? online.team : 0);
-  if (touch.attacking !== attacking) {
+  if (touch.attacking !== attacking || touch.variant !== match.variant) {
+    touch.variant = match.variant;
     touch.resetActions();
     touch.attacking = attacking;
     document.querySelectorAll("[data-possession]").forEach((button) => {
       button.hidden = (button.dataset.possession === "attack") !== attacking;
     });
   }
+  document.querySelector('[data-touch="hands"]').hidden =
+    !match.field.duel || match.ball.owner === match.selected;
+  if (match.field.duel)
+    for (const action of [
+      "switch",
+      "tackle",
+      "secondPress",
+      "lob",
+      "pass",
+      "shield",
+    ])
+      document.querySelector(`[data-touch="${action}"]`).hidden = true;
   const training = match.training === true;
   let mins = training ? 0 : (match.elapsed / match.duration) * 90;
   let sec = Math.floor(mins * 60);
@@ -591,7 +827,7 @@ function updateHUD() {
     ? "ARENA DE TREINO"
     : online.active
       ? `ONLINE · ${online.rtt} ms`
-      : "AMISTOSO";
+      : modeConfig(match.variant).name.toUpperCase();
   $("score").innerHTML = `${match.score[0]} <span>:</span> ${match.score[1]}`;
   let p = match.players[match.selected];
   $("player-team").textContent = p.team === 0 ? "ATLÉTICO" : "UNIÃO";
@@ -608,7 +844,26 @@ function updateHUD() {
   $("event-toast").classList.toggle("visible", match.eventTime > 0);
   $("power-wrap").hidden = !match.charging;
   $("power-fill").style.width = `${match.charge * 100}%`;
-  $("power-fill").style.background = match.charge > 0.8 ? "#ed9860" : "#c4f58a";
+  const chargeType =
+    match.players[match.actionPlayer]?.ballAction?.type ||
+    match.controls[match.activeTeam]?.bufferedAction?.type;
+  const shotCharging = chargeType === "shoot";
+  const band = shotCharging ? shotBand(match.charge) : "normal";
+  $("power-wrap").classList.toggle("shot-bands", shotCharging);
+  $("power-label").textContent =
+    band === "mishit"
+      ? "FORÇA EXCESSIVA!"
+      : band === "long-range"
+        ? "CHUTE DE LONGE"
+        : shotCharging
+          ? "FORÇA DO CHUTE"
+          : "FORÇA DO PASSE";
+  $("power-fill").style.background =
+    band === "mishit"
+      ? "#ff665b"
+      : band === "long-range"
+        ? "#ffd664"
+        : "#c4f58a";
   if (match.sequence !== lastSequence) {
     lastSequence = match.sequence;
     if (match.mode === "goal") beep(850, 0.5);
@@ -617,14 +872,16 @@ function updateHUD() {
     match.players
       .map(
         (p) =>
-          `<circle class="dot ${p.team ? "opponent" : ""} ${p.id === match.selected ? "selected" : ""}" cx="${90 + (p.x / 46) * 85}" cy="${58 + (p.z / 30) * 53}" r="${p.id === match.selected ? 3 : 2.2}"/>`,
+          `<circle class="dot ${p.team ? "opponent" : ""} ${p.id === match.selected ? "selected" : ""}" cx="${90 + (p.x / match.field.halfLength) * 85}" cy="${58 + (p.z / match.field.halfWidth) * 53}" r="${p.id === match.selected ? 3 : 2.2}"/>`,
       )
       .join("") +
-    `<circle class="ball-dot" cx="${90 + (match.ball.x / 46) * 85}" cy="${58 + (match.ball.z / 30) * 53}" r="1.6"/>`;
+    `<circle class="ball-dot" cx="${90 + (match.ball.x / match.field.halfLength) * 85}" cy="${58 + (match.ball.z / match.field.halfWidth) * 53}" r="1.6"/>`;
 }
 window.render_game_to_text = () =>
   JSON.stringify({
     ...match.snapshot(),
+    variant: match.variant,
+    field: match.field,
     network: {
       active: online.active,
       team: online.team,
@@ -737,7 +994,7 @@ function pollController(now) {
     hints.innerHTML =
       kind === "keyboard"
         ? keyboardHints
-        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Proteger</span>";
+        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Proteger</span><span><kbd>LB + X</kbd> Cavadinha</span><span><kbd>RB</kbd> 2º defensor</span><span><kbd>Y</kbd> Mãos (gol a gol)</span>";
   }
   if (
     state.disconnected &&
@@ -814,14 +1071,39 @@ function pollController(now) {
     return;
   }
   if (match.mode !== "playing") return;
+  if (match.field.footvolley) {
+    for (const key of ["pass", "lob", "shoot", "switch"])
+      if (pressed[key]) volleyAction(key);
+    return;
+  }
+  if (match.field.altinha) {
+    for (const [key, action] of [
+      ["pass", "keep"],
+      ["shoot", "style"],
+      ["lob", "trick"],
+      ["through", "pass"],
+    ])
+      if (pressed[key])
+        match.altinhaAction(
+          action === "pass" ? "pass-start" : action,
+          readInput(),
+        );
+    if (state.released.through)
+      match.altinhaAction("pass-release", readInput());
+    return;
+  }
   if (pressed.switch) gameAction("switchPlayer");
   const defending = possessionTeam(match) !== (online.active ? online.team : 0);
   if (pressed.lob && defending) gameAction("tackle", true);
-  if (pressed.shoot && defending) gameAction("tackle");
+  if (pressed.shoot && defending && !match.field.duel) gameAction("tackle");
   for (const type of ["pass", "lob", "through", "shoot"]) {
     if (
       pressed[type] &&
-      (!defending || type === "pass" || type === "through") &&
+      !(match.field.duel && type !== "shoot") &&
+      (!defending ||
+        match.field.duel ||
+        type === "pass" ||
+        type === "through") &&
       gameAction("beginAction", type, readInput())
     ) {
       shotStartedAt = performance.now();
@@ -837,7 +1119,11 @@ function pollController(now) {
   if (!online.active && match.charging && shotReleaseDelay === null)
     match.charge = Math.max(
       match.charge,
-      Math.min(1, (now - shotStartedAt) / 900),
+      Math.min(
+        1,
+        (now - shotStartedAt) /
+          (readInput().finesse && !readInput().chip ? 900 / 0.85 : 900),
+      ),
     );
 }
 function releaseShot() {
@@ -845,9 +1131,16 @@ function releaseShot() {
     if (!online.active) match.aimAction(readInput());
     const power = Math.max(
       match.charge,
-      Math.min(1, (performance.now() - shotStartedAt) / 900),
+      Math.min(
+        1,
+        (performance.now() - shotStartedAt) /
+          (readInput().finesse && !readInput().chip ? 900 / 0.85 : 900),
+      ),
     );
-    if (gameAction("releaseAction", power, readInput().finesse)) beep(160, 0.1);
+    if (
+      gameAction("releaseAction", power, readInput().finesse, readInput().chip)
+    )
+      beep(160, 0.1);
   }
   shotSource = null;
   shotReleaseDelay = null;

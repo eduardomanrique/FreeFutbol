@@ -1,3 +1,4 @@
+import { surfaceFor, rollingResistance } from "./surfaces.js";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { ROLL_DECELERATION } from "./ball-physics.js";
 await RAPIER.init();
@@ -6,7 +7,15 @@ const PLAYER = 1,
   BALL = 2,
   STATIC = 4;
 export class FootballPhysics {
-  constructor() {
+  constructor({
+    halfLength = 46,
+    halfWidth = 30,
+    goalHalf = 3.66,
+    goalHeight = 2.44,
+    curbHeight = 0,
+    goalStyle = "net",
+    apron = 0,
+  } = {}) {
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.numSolverIterations = 6;
     this.players = [];
@@ -16,34 +25,76 @@ export class FootballPhysics {
       this.world.createCollider(
         desc.setCollisionGroups(groups(STATIC, PLAYER | BALL)),
       );
-    fixed(
+    this.groundCollider = fixed(
       RAPIER.ColliderDesc.cuboid(60, 0.1, 40)
         .setTranslation(0, -0.1, 0)
         .setFriction(0.35)
         .setRestitution(0.48),
     );
     for (const sign of [-1, 1]) {
-      for (const z of [-3.66, 3.66])
+      for (const z of [-goalHalf, goalHalf])
         fixed(
-          RAPIER.ColliderDesc.cylinder(1.22, 0.06)
-            .setTranslation(sign * 46, 1.22, z)
+          RAPIER.ColliderDesc.cylinder(goalHeight / 2, 0.06)
+            .setTranslation(sign * halfLength, goalHeight / 2, z)
             .setRestitution(0.75),
         );
       fixed(
-        RAPIER.ColliderDesc.cylinder(3.66, 0.06)
-          .setTranslation(sign * 46, 2.44, 0)
+        RAPIER.ColliderDesc.cylinder(goalHalf, 0.06)
+          .setTranslation(sign * halfLength, goalHeight, 0)
           .setRotation({ x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 })
           .setRestitution(0.75),
       );
+      if (goalStyle === "crate") {
+        // Solid wood behind the opening; the goal line stays at the mouth.
+        for (const z of [-goalHalf, goalHalf])
+          fixed(
+            RAPIER.ColliderDesc.cuboid(0.425, goalHeight / 2, 0.05)
+              .setTranslation(sign * (halfLength + 0.425), goalHeight / 2, z)
+              .setRestitution(0.4),
+          );
+        fixed(
+          RAPIER.ColliderDesc.cuboid(0.05, goalHeight / 2, goalHalf)
+            .setTranslation(sign * (halfLength + 0.85), goalHeight / 2, 0)
+            .setRestitution(0.4),
+        );
+        fixed(
+          RAPIER.ColliderDesc.cuboid(0.475, 0.05, goalHalf)
+            .setTranslation(sign * (halfLength + 0.425), goalHeight, 0)
+            .setRestitution(0.4),
+        );
+      }
+      // A low street curb rebounds ground passes; lofted balls clear its top.
+      // Ball-only, since the existing upright boundaries already contain players.
+      if (curbHeight > 0)
+        this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(halfLength + 3, curbHeight / 2, 0.9)
+            .setTranslation(0, curbHeight / 2, sign * (halfWidth + 0.9))
+            .setFriction(0.15)
+            .setRestitution(0.7)
+            .setCollisionGroups(groups(STATIC, BALL)),
+        );
+      if (apron) {
+        for (const [hx, hz, x, z] of [
+          [halfLength + apron, 0.1, 0, sign * (halfWidth + apron)],
+          [0.1, halfWidth + apron, sign * (halfLength + apron), 0],
+        ])
+          this.world.createCollider(
+            RAPIER.ColliderDesc.cuboid(hx, 50, hz)
+              .setTranslation(x, 50, z)
+              .setRestitution(0.65)
+              .setFriction(0.1)
+              .setCollisionGroups(groups(STATIC, BALL)),
+          );
+      }
       // Player-only boundaries: the ball can leave for a restart.
       this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(0.1, 2, 35)
-          .setTranslation(sign * 46.0, 2, 0)
+          .setTranslation(sign * (halfLength + apron), 2, 0)
           .setCollisionGroups(groups(STATIC, PLAYER)),
       );
       this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(50, 2, 0.1)
-          .setTranslation(0, 2, sign * 30)
+          .setTranslation(0, 2, sign * (halfWidth + apron))
           .setCollisionGroups(groups(STATIC, PLAYER)),
       );
     }
@@ -105,7 +156,7 @@ export class FootballPhysics {
       body.setTranslation(
         {
           x: anchorX - vx * dt,
-          y: 0.9 + (p.header?.height || 0),
+          y: 0.9 + (p.header?.height || 0) + (p.evade?.height || 0),
           z: anchorZ - vz * dt,
         },
         true,
@@ -113,7 +164,7 @@ export class FootballPhysics {
       if (remote)
         body.setNextKinematicTranslation({
           x: p.x,
-          y: 0.9 + (p.header?.height || 0),
+          y: 0.9 + (p.header?.height || 0) + (p.evade?.height || 0),
           z: p.z,
         });
       body.setLinvel(
@@ -124,6 +175,10 @@ export class FootballPhysics {
   }
   step(match, dt) {
     const b = match.ball;
+    b.surface = match.field?.surface || b.surface || "grass";
+    const surface = surfaceFor(b);
+    this.groundCollider.setRestitution(surface.bounce);
+    this.ballCollider.setRestitution(surface.bounce);
     this.ensurePlayers(match.players);
     if (!this.prepared)
       match.players.forEach((p, i) => {
@@ -141,7 +196,7 @@ export class FootballPhysics {
     vx = b.vx * c - b.vz * s;
     vz = b.vx * s + b.vz * c;
     const drag = ground
-      ? Math.max(0, speed - (ROLL_DECELERATION + 0.085 * speed) * dt) /
+      ? Math.max(0, speed - rollingResistance(b, speed) * dt) /
         Math.max(0.00001, speed)
       : 1 / (1 + 0.0045 * Math.hypot(speed, vy) * dt);
     vx *= drag;
@@ -158,9 +213,14 @@ export class FootballPhysics {
           PLAYER |
             STATIC |
             ((owned && i === b.owner) ||
+            match.players[i].slide ||
+            match.players[i].knockdown ||
+            match.players[i].bicycle ||
+            (match.players[i].evade?.height || 0) > 0.35 ||
             (match.players[i].keeper &&
               !(match.training && match.players[i].team === 1) &&
-              match.players[i].goalkeeping?.mode !== "set") ||
+              (match.players[i].goalkeeping?.mode !== "set" ||
+                match.players[i].goalkeeping?.smother)) ||
             (i === match.lastKicker &&
               match.elapsed - match.kickReleasedAt < 0.18)
               ? 0

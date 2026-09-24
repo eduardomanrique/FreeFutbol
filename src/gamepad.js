@@ -24,7 +24,12 @@ export function radialStick(x = 0, z = 0, deadzone = 0.15) {
   return { x: (x / length) * strength, z: (z / length) * strength };
 }
 export class ControllerInput {
-  constructor(read = () => navigator.getGamepads?.() ?? []) {
+  constructor(
+    read = () =>
+      globalThis.__campoUseNativeGamepads
+        ? (globalThis.__campoNativeGamepads ?? [])
+        : (navigator.getGamepads?.() ?? []),
+  ) {
     this.read = read;
     this.identity = null;
     this.previous = {};

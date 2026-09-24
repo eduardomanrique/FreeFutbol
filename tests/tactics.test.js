@@ -91,7 +91,7 @@ test("forwards stay level or ahead when the carrier advances; support closes to 
   m.physics.dispose();
 });
 
-test("switching is defensive only, with a close-ball exception and pass-flight protection", () => {
+test("switching alternates the closest ahead and behind the ball, preserving attacking possession", () => {
   for (const team of [0, 1]) {
     const m = new Match({ multiplayer: true });
     m.start();
@@ -112,7 +112,11 @@ test("switching is defensive only, with a close-ball exception and pass-flight p
       Object.assign(m.players[cover], { x: -dir * 7, z: 0 });
       Object.assign(m.players[behind], { x: dir * 5, z: 0 });
       m.switchPlayer();
+      assert.equal(m.selected, behind);
+      m.switchPlayer();
       assert.equal(m.selected, cover);
+      m.switchPlayer();
+      assert.equal(m.selected, behind);
       m.selected = selected;
       m.players[behind].x = dir * 2;
       m.switchPlayer();
@@ -248,7 +252,7 @@ test("defender reacts to a 45 degree cut after a bounded delay at different upda
   }
 });
 
-test("a close 45 degree cut can beat the final AI defender on either side without losing possession", async () => {
+test("explicit protection keeps possession during a diagonal escape on either side", async () => {
   const { initLocomotion } = await import("../src/locomotion.js");
   for (const side of [-1, 1]) {
     const m = new Match({ random: () => 0 });
@@ -285,17 +289,20 @@ test("a close 45 degree cut can beat the final AI defender on either side withou
       vz: 0,
     });
     p.ballMotion = null;
-    let passed = false;
+    const startZ = p.z;
     for (let i = 0; i < 200; i++) {
-      m.update(1 / 120, { x: Math.SQRT1_2, z: side * Math.SQRT1_2 });
+      m.update(1 / 120, {
+        x: Math.SQRT1_2,
+        z: side * Math.SQRT1_2,
+        jockey: true,
+      });
       assert.equal(
         m.ball.owner,
         0,
         "ball still requires physical contest; this timed cut stays clear",
       );
-      passed ||= p.x > q.x + 1;
     }
-    assert.ok(passed, `cut side ${side}`);
+    assert.ok((p.z - startZ) * side > 1, `escape side ${side}`);
     m.physics.dispose();
   }
 });

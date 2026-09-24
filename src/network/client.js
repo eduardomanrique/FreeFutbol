@@ -1,9 +1,11 @@
+import { modeConfig } from "../modes.js";
 import { TeamSimulation } from "./team-simulation.js";
 import {
   TEAM_PROTOCOL,
   encodeTeamMessage,
 } from "../../shared/team-protocol.js";
 import { PROTOCOL_VERSION, TICK_RATE } from "../../shared/protocol.js";
+import { apiEndpoint, socketEndpoint } from "./endpoints.js";
 const storageKey = "campo-online-session-v1";
 export class OnlineClient {
   constructor({ onRoom, onStart, onEnd, onStatus }) {
@@ -19,19 +21,23 @@ export class OnlineClient {
     this.bytes = 0;
     this.generation = 0;
   }
-  async enter(code, duration, networkMode = "teams") {
+  async enter(code, duration, networkMode = "teams", mode = "match") {
     if (this.active) return;
-    const response = await fetch(`/futebol/api/rooms${code ? "/join" : ""}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        version: PROTOCOL_VERSION,
-        code,
-        duration,
-        networkMode,
-        teamProtocol: TEAM_PROTOCOL,
-      }),
-    });
+    const response = await fetch(
+      apiEndpoint(`/futebol/api/rooms${code ? "/join" : ""}`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: PROTOCOL_VERSION,
+          code,
+          duration,
+          networkMode,
+          mode,
+          teamProtocol: TEAM_PROTOCOL,
+        }),
+      },
+    );
     let data;
     try {
       data = await response.json();
@@ -55,6 +61,7 @@ export class OnlineClient {
   begin(data) {
     this.active = true;
     this.team = data.team;
+    this.playerSlot = data.playerSlot ?? data.team;
     this.token = data.token;
     this.events = [];
     this.snapshots = [];
@@ -66,16 +73,18 @@ export class OnlineClient {
     this.generation++;
     sessionStorage.setItem(
       storageKey,
-      JSON.stringify({ token: data.token, team: data.team }),
+      JSON.stringify({
+        token: data.token,
+        team: data.team,
+        playerSlot: this.playerSlot,
+      }),
     );
     this.connect(this.generation);
   }
   connect(generation) {
     if (!this.active || generation !== this.generation) return;
     this.onStatus("Conectando ao servidor…");
-    const ws = (this.socket = new WebSocket(
-      `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/futebol/api/ws`,
-    ));
+    const ws = (this.socket = new WebSocket(socketEndpoint("/futebol/api/ws")));
     const authTimeout = setTimeout(() => ws.close(), 7000);
     ws.onopen = () =>
       ws.send(
@@ -93,6 +102,7 @@ export class OnlineClient {
       if (msg.type === "authenticated") {
         clearTimeout(authTimeout);
         this.authenticated = true;
+        this.playerSlot = msg.playerSlot ?? this.team;
         this.seq = msg.sequence + 1;
         this.retry = 0;
         this.events = [];
@@ -129,8 +139,13 @@ export class OnlineClient {
         };
         this.onStatus(
           msg.room.status === "waiting" &&
-            msg.room.players.every((p) => p?.ready && p.connected)
-            ? this.team === 0
+            (msg.room.mode === "futevolei"
+              ? msg.room.players.filter(Boolean).length >= 2 &&
+                msg.room.players
+                  .filter(Boolean)
+                  .every((p) => p.ready && p.connected)
+              : msg.room.players.every((p) => p?.ready && p.connected))
+            ? this.playerSlot === 0
               ? "Todos prontos. Inicie a partida."
               : "Todos prontos. Aguardando o criador iniciar."
             : status[msg.room.status],
@@ -143,7 +158,10 @@ export class OnlineClient {
         if (state.tick < (this.lastReceivedTick ?? -1)) return;
         this.lastReceivedTick = state.tick;
         this.tick = state.tick;
-        this.lastAck = state.acknowledgements[this.team];
+        this.lastAck =
+          state.acknowledgements[
+            state.variant === "futevolei" ? this.playerSlot : this.team
+          ];
         this.snapshots.push({ state, received: performance.now() });
         if (this.snapshots.length > 12) this.snapshots.shift();
         if (!this.started) {
@@ -282,12 +300,19 @@ export class OnlineClient {
         }
       });
     }
+    if (state.variant && match.variant !== state.variant)
+      match.start(360, "normal", false, state.variant);
+    match.variant = state.variant || "match";
+    match.field = modeConfig(match.variant);
+    match.footvolley = state.footvolley;
     match.multiplayer = true;
     match.activeTeam = this.team;
     match.controls = state.controls.map((c, i) => ({
       ...c,
       lastInput: i === this.team ? input : {},
     }));
+    if (match.field.footvolley)
+      match.controls[this.team].selected = this.playerSlot;
     for (const key of [
       "mode",
       "elapsed",
@@ -295,6 +320,9 @@ export class OnlineClient {
       "score",
       "ball",
       "setPiece",
+      "foul",
+      "pendingRestart",
+      "lastTackle",
       "event",
       "eventTime",
       "sequence",

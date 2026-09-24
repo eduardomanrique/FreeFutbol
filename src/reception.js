@@ -103,3 +103,16 @@ export function receptionContact(p, b, kind, dt) {
     b.y + b.vy * dt * t <= RECEPTION[kind].height
   );
 }
+
+// Reduce failed friendly traps and passive lane interceptions by 80%.
+// Body collisions remain physical; active defenders still have to reach the ball.
+export function passReceptionProbability(p, opportunity, intent, passingTeam) {
+  if (p.team === passingTeam) return 1 - (1 - opportunity.probability) * 0.2;
+  if (opportunity.kind === "body") return opportunity.probability;
+  const ix = intent?.x || 0,
+    iz = intent?.z || 0;
+  const toward = ix * (opportunity.x - p.x) + iz * (opportunity.z - p.z);
+  return Math.hypot(ix, iz) > 0.15 && toward > 0
+    ? 1
+    : opportunity.probability * 0.2;
+}

@@ -1,10 +1,12 @@
+import { rollingResistance } from "./surfaces.js";
 import { strikePosture } from "./body-expression.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const wrapAngle = (v) => Math.atan2(Math.sin(v), Math.cos(v));
 export function goalAim(player, ball, northSouth = 0) {
-  const x = player.team === 0 ? 46 : -46;
-  const z = clamp(northSouth, -1, 1) * 3.2;
+  const x = (player.team === 0 ? 1 : -1) * (player.field?.halfLength ?? 46);
+  const z =
+    clamp(northSouth, -1, 1) * ((player.field?.goalHalf ?? 3.66) - 0.46);
   const d = Math.hypot(x - ball.x, z - ball.z) || 1;
   return { targetZ: z, aim: { x: (x - ball.x) / d, z: (z - ball.z) / d } };
 }
@@ -84,7 +86,12 @@ export function selectPassTarget(players, p, aim, power = 1, type = "pass") {
   }
   return ranked[0]?.q;
 }
-export function passTrajectory(distance, power, lob = false) {
+export function passTrajectory(
+  distance,
+  power,
+  lob = false,
+  surface = "grass",
+) {
   distance = Math.max(0.5, distance);
   if (lob) {
     const flight = clamp(distance / (11 + power * 10), 1.5, 2.35);
@@ -108,7 +115,7 @@ export function passTrajectory(distance, power, lob = false) {
   for (let x = 0; x < distance; x += 0.1) {
     const dx = Math.min(0.1, distance - x);
     speed = Math.sqrt(
-      speed * speed + 2 * (ROLL_DECELERATION + 0.085 * speed) * dx,
+      speed * speed + 2 * rollingResistance({ surface }, speed) * dx,
     );
   }
   // Allow for initial sliding-to-rolling loss in the rigid-body contact solver.
@@ -134,13 +141,13 @@ export function footBallDistance(foot, b, previous = foot) {
 export function actionApproach(p, ball, action) {
   const incoming = Math.hypot(ball.vx, ball.vz);
   const forward =
-    action.firstTime && incoming > 0.5
+    action.firstTime && !action.scramble && incoming > 0.5
       ? { x: -ball.vx / incoming, z: -ball.vz / incoming }
       : { x: Math.sin(action.heading), z: Math.cos(action.heading) };
   const behind = action.firstTime ? 0.45 : strikePosture(action).behind;
   // Track a moving ball with its velocity rather than braking to a stationary
   // point behind it. Stance forces still bound all changes in body momentum.
-  if (!action.firstTime && incoming > 0.5) {
+  if (!action.firstTime && !action.scramble && incoming > 0.5) {
     const future = { ...ball };
     const horizon = 0.24;
     for (let t = 0; t < horizon; t += 1 / 120) stepBallMotion(future, 1 / 120);
@@ -150,7 +157,9 @@ export function actionApproach(p, ball, action) {
     const vx = ball.vx + errorX * 5;
     const vz = ball.vz + errorZ * 5;
     const speed = Math.hypot(vx, vz);
-    const cap = Math.max(7.5, Math.min(9.775, action.approachSpeed || 0));
+    const cap = action.scramble
+      ? 10.5
+      : Math.max(7.5, Math.min(9.775, action.approachSpeed || 0));
     const scale = speed > cap ? cap / speed : 1;
     return { x: vx * scale, z: vz * scale };
   }
@@ -180,5 +189,83 @@ export function actionApproach(p, ball, action) {
   return {
     x: distance ? (dx / distance) * speed : 0,
     z: distance ? (dz / distance) * speed : 0,
+  };
+}
+
+// Exactly 90% is still the long shot. Excess force begins strictly above it.
+export function shotBand(power) {
+  return power > 0.9 ? "mishit" : power >= 0.85 ? "long-range" : "normal";
+}
+export function loftedShotLift(distance, speed, height, targetHeight, surface) {
+  // Solve with the same drag as the live ball, not a vacuum parabola.
+  let lo = -12,
+    hi = 45;
+  for (let n = 0; n < 18; n++) {
+    const lift = (lo + hi) / 2;
+    const b = {
+      x: 0,
+      z: 0,
+      y: height,
+      vx: speed,
+      vz: 0,
+      vy: lift,
+      spin: 0,
+      surface,
+    };
+    let crossingHeight = 0;
+    for (let t = 0; t < 8; t += 1 / 120) {
+      const x = b.x,
+        y = b.y;
+      stepBallMotion(b, 1 / 120);
+      if (b.x >= distance) {
+        crossingHeight = y + ((b.y - y) * (distance - x)) / (b.x - x);
+        break;
+      }
+      if (b.y <= 0.11 && b.vy <= 0) break;
+    }
+    if (crossingHeight < targetHeight) lo = lift;
+    else hi = lift;
+  }
+  return (lo + hi) / 2;
+}
+
+// Keep weak taps responsive, but make the narrow sweet spot usable on touch
+// screens: 120ms in 85–90%, followed by 100ms to reach excessive force.
+export function advanceShotCharge(power, dt, finesse = false) {
+  if (finesse) dt *= 0.85;
+  const time =
+    power < 0.85
+      ? power * 0.315
+      : power <= 0.9
+        ? 0.26775 + (power - 0.85) * 2.4
+        : 0.38775 + (power - 0.9);
+  const next = time + dt;
+  return Math.min(
+    1,
+    next < 0.26775
+      ? next / 0.315
+      : next <= 0.38775
+        ? 0.85 + (next - 0.26775) / 2.4
+        : 0.9 + next - 0.38775,
+  );
+}
+
+export function chipTrajectory(
+  distance,
+  power,
+  height = 0.11,
+  goalHeight = 2.44,
+  surface = "grass",
+) {
+  const apex = 1.9 + power * 1.8 + Math.min(0.8, distance * 0.02);
+  const arrival = Math.min(0.7, goalHeight - 0.3);
+  const flight =
+    (Math.sqrt(2 * 9.81 * Math.max(0.1, apex - height)) +
+      Math.sqrt(2 * 9.81 * Math.max(0.1, apex - arrival))) /
+    9.81;
+  const speed = Math.max(5, (distance / flight) * 1.1);
+  return {
+    speed,
+    lift: loftedShotLift(distance, speed, height, arrival, surface),
   };
 }

@@ -6,7 +6,11 @@ const isolate = (m) =>
     p.x = -30 + i * 2;
     p.z = -25;
   });
-const strike=m=>{for(let i=0;i<240 && !m.lastShot && !m.lastPass;i++)m.update(1/120,{});assert.ok(m.lastShot||m.lastPass);};
+const strike = (m) => {
+  for (let i = 0; i < 240 && !m.lastShot && !m.lastPass; i++)
+    m.update(1 / 120, {});
+  assert.ok(m.lastShot || m.lastPass);
+};
 const tick = (m, seconds, input = {}) => {
   for (let i = 0; i < Math.round(seconds * 120); i++) m.update(1 / 120, input);
 };
@@ -28,19 +32,21 @@ test("movement, sprint and stamina are frame independent", () => {
   assert.ok(b.players[9].stamina < a.players[9].stamina);
   assert.ok(a.ball.x > 0);
 });
-test("charged shot releases possession with greater speed and a controlled flight", () => {
+test("overpowered shot releases possession with greater speed and an inaccurate flight", () => {
   let a = new Match(),
     b = new Match();
   a.start();
   b.start();
   a.shoot(0.1);
   b.shoot(1);
-  strike(a);strike(b);
+  strike(a);
+  strike(b);
   assert.equal(b.ball.owner, null);
   assert.ok(b.ball.vx > a.ball.vx);
   assert.ok(b.ball.vy > 0);
   assert.equal(b.lastShot.power, 1);
-  assert.equal(b.lastShot.speed, 27);
+  assert.equal(b.lastShot.speed, 50);
+  assert.equal(b.lastShot.band, "mishit");
   tick(b, 0.2);
   assert.ok(b.ball.y > 0.11);
 });
@@ -48,7 +54,7 @@ test("passes release ball and select receiver", () => {
   let m = new Match();
   m.start();
   assert.equal(m.pass(), true);
-  assert.equal(m.ball.owner,9);
+  assert.equal(m.ball.owner, 9);
   strike(m);
   assert.notEqual(m.selected, 9);
   assert.equal(m.ball.owner, null);
@@ -111,6 +117,8 @@ test("shots above crossbar and wide do not score", () => {
     m.integrateBall(1 / 120);
     assert.deepEqual(m.score, [0, 0]);
     assert.equal(m.event, "TIRO DE META");
+    assert.equal(m.pendingRestart.team, 1);
+    tick(m, 2.05);
     assert.equal(m.ball.lastTeam, 1);
   }
 });
@@ -144,6 +152,8 @@ test("touchline awards other team possession", () => {
   });
   m.integrateBall(1 / 120);
   assert.equal(m.event, "LATERAL");
+  assert.equal(m.pendingRestart.team, 1);
+  tick(m, 2.05);
   assert.equal(m.ball.lastTeam, 1);
 });
 test("pause freezes simulation and duration ends match", () => {
@@ -158,7 +168,12 @@ test("pause freezes simulation and duration ends match", () => {
 });
 test("long autonomous simulation remains finite and on field", () => {
   let seed = 8;
-  let m = new Match({random:()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}});
+  let m = new Match({
+    random: () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    },
+  });
   m.start(360);
   for (let i = 0; i < 120 * 100; i++) {
     m.update(1 / 120, {
@@ -180,14 +195,14 @@ test("long autonomous simulation remains finite and on field", () => {
   assert.ok(m.ball.y >= 0.11);
 });
 
-test("full shot from edge of box reaches goal below crossbar with pace", () => {
-  const m = new Match({random:()=>.5});
+test("85–90% shot from edge of box reaches goal below crossbar with pace", () => {
+  const m = new Match({ random: () => 0.5 });
   m.start();
   isolate(m);
   m.players[9].z = 0;
   m.players[9].x = 25;
   m.ball.x = 25.7;
-  m.shoot(1);
+  m.shoot(0.87);
   strike(m);
   let speedAtLine = 0;
   for (let i = 0; i < 120; i++) {
@@ -198,7 +213,7 @@ test("full shot from edge of box reaches goal below crossbar with pace", () => {
     }
   }
   assert.equal(m.score[0], 1);
-  assert.ok(speedAtLine > 20 && speedAtLine < 27);
+  assert.ok(speedAtLine > 28 && speedAtLine < 39);
 });
 test("rolling ball does not lose most of its speed in one second", () => {
   const m = new Match();

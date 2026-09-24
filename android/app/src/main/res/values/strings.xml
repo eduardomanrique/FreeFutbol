@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CAMPO 26</string>
+    <string name="title_activity_main">CAMPO 26</string>
+    <string name="package_name">dev.kmworks.campo26</string>
+    <string name="custom_url_scheme">dev.kmworks.campo26</string>
+</resources>

@@ -1,3 +1,5 @@
+import { motionAction } from "./action-state.js";
+import { rollingResistance } from "./surfaces.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const length = Math.hypot;
@@ -39,14 +41,15 @@ export function guideDribbler(p, b, vx, vz) {
   const stopping = requested < 0.1;
   const wasRecovering = ["turn", "recover"].includes(p.dribbleState?.mode);
   const recovering =
-    (wasRecovering && (distance > 1.05 || ahead < 0.3 || lateral > 0.25 || turn < 0.85)) ||
+    (wasRecovering &&
+      (distance > 1.05 || ahead < 0.3 || lateral > 0.25 || turn < 0.85)) ||
     distance > DRIBBLE.recoveryDistance ||
     ahead < 0.18 ||
     lateral > 0.55 ||
     turn < 0.75 ||
     (stopping && distance > 0.6);
   p.dribbleIntent = { x: vx, z: vz };
-  if (p.shield && !p.ballAction) {
+  if (p.shield && !motionAction(p)) {
     const sh = p.shield;
     p.dribbleState = {
       mode: "shield",
@@ -89,8 +92,74 @@ export function guideDribbler(p, b, vx, vz) {
   };
   if (stopping && length(b.vx, b.vz) < 0.08 && distance <= 1.12)
     return { x: 0, z: 0 };
-  if (!recovering)
+  if (
+    stopping &&
+    speed > 0.8 &&
+    (distance < 1.35 || p.lastDribble?.kind === "brake")
+  )
+    return { x: 0, z: 0 };
+  if (
+    requested > 0.1 &&
+    p.lastDribble &&
+    distance < 3.5 &&
+    !(
+      p.lastDribble.kind === "cut" &&
+      length(p.lastDribble.vx, p.lastDribble.vz) < 4
+    )
+  ) {
+    // The stick chooses the next shoe impulse, not a route away from the ball.
+    // Follow its existing trajectory until contact actually redirects it.
+    const ballSpeed = length(b.vx, b.vz);
+    const route =
+      ballSpeed > 0.2
+        ? { x: b.vx / ballSpeed, z: b.vz / ballSpeed }
+        : {
+            x: (b.x - p.x) / (distance || 1),
+            z: (b.z - p.z) / (distance || 1),
+          };
+    const tx = future.x - route.x * 0.45 - p.x;
+    const tz = future.z - route.z * 0.45 - p.z;
+    const d = length(tx, tz);
+    let cap = Math.min(
+      Math.max(requested, speed),
+      ballSpeed + Math.sqrt(12 * d),
+    );
+    if (
+      p.sprintRequested &&
+      turn < 0.85 &&
+      vx * b.vx + vz * b.vz < 0.9 * requested * ballSpeed
+    )
+      cap = Math.min(cap, Math.max(4, speed * 0.75));
+    if (turn < 0.5) cap = Math.min(cap, Math.max(2.6, speed * 0.65));
+    const v = Math.min(cap, d * 5);
+    p.dribbleState.pursuingTouch = true;
+    return { x: d ? (tx / d) * v : 0, z: d ? (tz / d) * v : 0 };
+  }
+  // Gentle cuts keep running momentum while closing the gap to the next
+  // physical shoe contact. Hard reversals still use the braking path below.
+  if (
+    requested > 3 &&
+    turn > 0.4 &&
+    distance < 3.5 &&
+    length(b.vx, b.vz) > 0.5
+  ) {
+    const tx = future.x - direction.x * 0.45 - p.x,
+      tz = future.z - direction.z * 0.45 - p.z;
+    const d = length(tx, tz);
+    if (d > 0.5 && ahead > 0.3 && (distance > 1.05 || lateral > 0.35)) {
+      const v = Math.max(
+        requested * 0.94,
+        Math.min(Math.max(requested, speed), d * 5),
+      );
+      const blend = distance < 1.6 ? 0.4 : 0.15;
+      const hx = (tx / d) * (1 - blend) + direction.x * blend,
+        hz = (tz / d) * (1 - blend) + direction.z * blend,
+        h = length(hx, hz);
+      return { x: (hx / h) * v, z: (hz / h) * v };
+    }
     return { x: vx, z: vz };
+  }
+  if (!recovering) return { x: vx, z: vz };
   // Move the athlete to the next contact, not the ball toward the athlete.
   // During a cut, braking/catching the old trajectory precedes the new direction.
   const tx = future.x - direction.x * 0.38 - p.x,
@@ -139,7 +208,32 @@ export function dribbleImpulse(p, b) {
       ? 0.24
       : 0.34
     : rhythm.interval;
-  if (p.shield && !p.ballAction) {
+  const directionDot =
+    previousSpeed > 0.1 && requested > 0.1
+      ? (intent.x * previous.vx + intent.z * previous.vz) /
+        (requested * previousSpeed)
+      : turn;
+  if (
+    !p.shield &&
+    correcting &&
+    requested > 3 &&
+    directionDot > 0.45 &&
+    previousSpeed > 2
+  ) {
+    // Redirect at actual contact, retaining the preceding touch's travel length.
+    const launch =
+      previousSpeed *
+      (0.98 + 0.02 * clamp(directionDot, 0, 1)) *
+      (p.sprintRequested ? 1 - 0.35 * (1 - directionDot) : 1);
+    return {
+      vx: (intent.x / requested) * launch,
+      vz: (intent.z / requested) * launch,
+      interval: rhythm.interval,
+      lead: previous.lead,
+      kind: "cut",
+    };
+  }
+  if (p.shield && !motionAction(p)) {
     const sh = p.shield,
       interval = 0.32;
     const tx = p.x + p.vx * interval + sh.x * 0.78 + intent.x * 0.14;
@@ -164,8 +258,34 @@ export function dribbleImpulse(p, b) {
       kind: "shield",
     };
   }
-  if (requested < 0.1 && speed < 2)
-    return { vx: 0, vz: 0, interval, kind: "stop", lead: 0 };
+  if (requested < 0.1) {
+    if (speed < 0.8)
+      return { vx: 0, vz: 0, interval: 0.2, kind: "stop", lead: 0 };
+    // Place the ball beyond the body's predicted braking point, rather than
+    // pinning it under a runner who still has forward momentum.
+    const hard = b.surface === "court" || b.surface === "street";
+    const brakingDistance =
+      (speed * speed) / (2 * (b.surface === "sand" ? 9 : hard ? 5.5 : 7));
+    const dx = p.vx / speed,
+      dz = p.vz / speed;
+    const travel = Math.max(
+      0,
+      (p.x - b.x) * dx +
+        (p.z - b.z) * dz +
+        brakingDistance +
+        (b.surface === "sand" ? 0.6 : 0.8),
+    );
+    const launch = Math.sqrt(
+      2 * rollingResistance(b, Math.max(1, speed * 0.55)) * travel,
+    );
+    return {
+      vx: dx * launch,
+      vz: dz * launch,
+      interval: 0.18,
+      kind: "brake",
+      lead: travel,
+    };
+  }
   // At close reach, steer from the ball itself: a change of stick direction
   // must not inherit the old body trajectory, including at sprint speed.
   // A cut is a short placement; the body still brakes through stance forces.

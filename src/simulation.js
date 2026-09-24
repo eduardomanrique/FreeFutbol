@@ -1,3 +1,36 @@
+import {
+  initFootvolley,
+  updateFootvolley,
+  requestVolley,
+} from "./footvolley.js";
+import { tryFlair } from "./flair.js";
+import { initAltinha, requestAltinha, updateAltinha } from "./altinha.js";
+import {
+  updateSecondDefender,
+  secondDefenderTarget,
+} from "./second-defender.js";
+import {
+  inOwnArea,
+  legalDuelShot,
+  constrainDuelPlayer,
+  duelKeeperPose,
+  duelAI,
+  duelHandPenalty,
+  dropDuelBall,
+  resetDuelKickoff,
+} from "./duel.js";
+import { motionAction } from "./action-state.js";
+import {
+  startSlide,
+  stepSpecial,
+  slideContacts,
+  planBicycle,
+  bicycleContact,
+  celebrate,
+  unavailable,
+} from "./gameplay-actions.js";
+import { placeFreeKick } from "./free-kicks.js";
+import { modeConfig } from "./modes.js";
 import { keeperControl, stepKeeper, keeperHandContact } from "./goalkeeper.js";
 import { stepHeader, headerContact, headPosition } from "./heading.js";
 import { possessionTeam } from "./possession.js";
@@ -26,6 +59,10 @@ import {
   strikeStyle,
   shotPrecision,
   shotFacing,
+  shotBand,
+  loftedShotLift,
+  advanceShotCharge,
+  chipTrajectory,
   actionApproach,
   footBallDistance,
   wrapAngle,
@@ -35,6 +72,7 @@ import {
   RECEPTION,
   POSSESSION_CHALLENGE,
   receptionOpportunity,
+  passReceptionProbability,
   receptionRoll,
   receptionContact,
 } from "./reception.js";
@@ -91,6 +129,8 @@ export class Match {
     multiplayer = false,
     headless = false,
   } = {}) {
+    this.variant = "match";
+    this.field = modeConfig("match");
     this.activeTeam = 0;
     this.multiplayer = multiplayer;
     this.headless = headless;
@@ -182,24 +222,48 @@ export class Match {
     );
   }
   resetPlayers(kickTeam = 0) {
+    const config = this.field;
+    const count = config.players;
+    const kickoff = count === 11 ? 9 : count - 1;
+    const positions =
+      count === 11
+        ? formation
+        : Array.from({ length: count }, (_, i) =>
+            config.keeper && i === 0
+              ? [-config.halfLength + 2, 0]
+              : i === count - 1
+                ? [-1, 0]
+                : [
+                    -config.halfLength * (i < 2 ? 0.6 : 0.3),
+                    (i % 2 ? 1 : -1) * config.halfWidth * 0.52,
+                  ],
+          );
+    this.foul = null;
+    this.pendingRestart = null;
+    this.lastTackle = null;
     this.setPiece = null;
     this.restartRestriction = null;
     this.doubleTouch = null;
     if (this.training) kickTeam = 0;
     for (const [team, control] of this.controls.entries())
       Object.assign(control, {
-        selected: team * 11 + 9,
+        selected: team * count + kickoff,
         charge: 0,
         charging: false,
         actionPlayer: null,
         bufferedAction: null,
         lastInput: {},
+        secondDefender: null,
+        pressEnergy: 1,
+        pressExhausted: false,
       });
     this.players = [];
     for (let t = 0; t < 2; t++)
-      formation.forEach(([x, z], i) =>
+      positions.forEach(([x, z], i) =>
         this.players.push({
-          id: t * 11 + i,
+          id: t * count + i,
+          field: config,
+          renderId: t * 11 + (config.duel ? 1 : config.keeper ? i : i + 1),
           team: t,
           number: numbers[i],
           name:
@@ -218,7 +282,7 @@ export class Match {
                   "N. DUARTE",
                   "H. CRUZ",
                 ][i],
-          keeper: i === 0,
+          keeper: config.keeper && i === 0,
           x: t === 0 ? x : -x,
           z: t === 0 ? z : -z,
           homeX: t === 0 ? x : -x,
@@ -236,9 +300,13 @@ export class Match {
         }),
       );
     if (!this.training)
-      this.players[kickTeam === 0 ? 20 : 9].x = kickTeam === 0 ? 10 : -10;
-    this.selected = 9;
+      this.players[(1 - kickTeam) * count + kickoff].x =
+        kickTeam === 0
+          ? Math.min(10, config.halfLength * 0.45)
+          : -Math.min(10, config.halfLength * 0.45);
+    this.selected = kickoff;
     this.ball = {
+      surface: this.field.surface,
       x: kickTeam === 0 ? 0 : 1,
       y: 0.11,
       z: 0,
@@ -246,7 +314,7 @@ export class Match {
       vy: 0,
       vz: 0,
       spin: 0,
-      owner: kickTeam === 0 ? 9 : 20,
+      owner: kickTeam * count + kickoff,
       lastTeam: kickTeam,
     };
     this.ballFlight++;
@@ -262,19 +330,41 @@ export class Match {
     this.charge = 0;
     this.actionPlayer = null;
     this.lastInput = {};
+    if (config.duel) resetDuelKickoff(this, kickTeam);
     this.players.forEach(initLocomotion);
     if (this.motionLibrary) this.attachMotionLibrary(this.motionLibrary);
     this.distributed?.reset();
   }
-  start(duration = 360, difficulty = "normal", training = false) {
+  start(
+    duration = 360,
+    difficulty = "normal",
+    training = false,
+    variant = "match",
+  ) {
+    this.variant =
+      modeConfig(variant) === modeConfig("match") ? "match" : variant;
+    this.field = modeConfig(variant);
+    this.physics.world.free();
+    this.physics = new FootballPhysics(this.field);
     this.duration = duration;
     this.difficulty = difficulty;
     this.training = !!training;
     this.score = [0, 0];
     this.elapsed = 0;
     this.resetPlayers();
+    this.altinha = null;
+    this.footvolley = null;
+    if (this.field.footvolley) initFootvolley(this);
+    if (this.field.altinha) initAltinha(this);
     this.mode = "playing";
-    this.announce("APITO INICIAL · ATLÉTICO ATACA →", 3);
+    this.announce(
+      this.field.footvolley
+        ? "FUTEVÔLEI · ATAQUE PARA SACAR"
+        : this.field.altinha
+          ? "ALTINHA · TOQUE PARA LANÇAR A BOLA"
+          : "APITO INICIAL · ATLÉTICO ATACA →",
+      3,
+    );
   }
   announce(text, time = 2.2) {
     this.event = text;
@@ -282,33 +372,66 @@ export class Match {
     this.sequence++;
   }
   switchPlayer() {
+    if (this.field.footvolley) return requestVolley(this, "switch");
+    if (this.field.altinha) return;
     if (possessionTeam(this) === this.activeTeam) return;
     const dir = this.activeTeam === 0 ? 1 : -1;
-    let candidates = this.players.filter(
-      (p) => p.team === this.activeTeam && !p.keeper && p.id !== this.selected,
-    );
-    const close = candidates.filter(
-      (p) => length(p.x - this.ball.x, p.z - this.ball.z) <= 3.5,
-    );
-    const covering = candidates.filter((p) => (p.x - this.ball.x) * dir <= 0);
-    candidates = close.length ? close : covering.length ? covering : candidates;
-    candidates.sort(
-      (a, b) =>
-        length(a.x - this.ball.x, a.z - this.ball.z) -
-        length(b.x - this.ball.x, b.z - this.ball.z),
-    );
-    if (!candidates.length) return;
-    this.selected = candidates[0].id;
+    const candidates = this.players
+      .filter((p) => p.team === this.activeTeam && !p.keeper && !unavailable(p))
+      .sort(
+        (a, b) =>
+          length(a.x - this.ball.x, a.z - this.ball.z) -
+            length(b.x - this.ball.x, b.z - this.ball.z) || a.id - b.id,
+      );
+    const front = candidates.find((p) => (p.x - this.ball.x) * dir > 0);
+    const back = candidates.find((p) => (p.x - this.ball.x) * dir <= 0);
+    const next =
+      this.selected === front?.id
+        ? back
+        : this.selected === back?.id
+          ? front
+          : candidates[0];
+    const fallback = candidates.find((p) => p.id !== this.selected);
+    if (!next && !fallback) return;
+    this.selected = (next || fallback).id;
     this.lastAction = "switch";
   }
+  volleyAction(type, input = this.lastInput || {}) {
+    return requestVolley(this, type, input);
+  }
+  altinhaAction(type, input = this.lastInput || {}) {
+    return requestAltinha(this, type, input);
+  }
   beginAction(type, input = this.lastInput || {}) {
+    if (this.field.altinha) return false;
     const p = this.players[this.selected];
-    if (this.setPiece && this.setPiece.taker !== p.id) return false;
+    if (
+      this.field.duel &&
+      this.setPiece?.type !== "penalty" &&
+      (type !== "shoot" || !legalDuelShot(p, this.ball))
+    ) {
+      this.announce(
+        type !== "shoot"
+          ? "GOL A GOL · USE O CHUTE"
+          : "CHUTE DE DENTRO DA SUA METADE",
+        1.2,
+      );
+      return false;
+    }
+    if (
+      this.setPiece &&
+      (this.setPiece.taker !== p.id ||
+        this.elapsed < (this.setPiece.readyAt || 0))
+    )
+      return false;
     if (
       this.mode !== "playing" ||
       !["pass", "lob", "through", "shoot"].includes(type) ||
       (p.ballAction && !p.ballAction.firstTime) ||
-      p.recovery > 0
+      p.recovery > 0 ||
+      unavailable(p) ||
+      !!this.foul ||
+      !!this.pendingRestart
     )
       return false;
     if (this.ball.owner !== p.id) {
@@ -329,7 +452,8 @@ export class Match {
     this.controls[this.activeTeam].bufferedAction = null;
     p.ballAction = this.createBallAction(p, type, input);
     // A scheduled dribble cannot interfere with the striking leg.
-    if (p.ballMotion?.kind === "dribble") p.ballMotion.hit = true;
+    if (type !== "shoot" && p.ballMotion?.kind === "dribble")
+      p.ballMotion.hit = true;
     this.charging = true;
     this.charge = 0;
     this.actionPlayer = p.id;
@@ -345,6 +469,8 @@ export class Match {
       type,
       stage: "charging",
       heldSeconds: 0,
+      fromPossession: this.ball.owner === p.id,
+      chip: !!input.chip,
       approachSpeed: length(p.vx, p.vz),
       requiresPlant: true,
       power: 0,
@@ -370,6 +496,23 @@ export class Match {
     if (!queued) return;
     const p = this.players[queued.player];
     if (
+      queued.type === "shoot" &&
+      !queued.released &&
+      this.selected === queued.player
+    ) {
+      queued.expiresAt = this.elapsed + 1;
+      if (this.ball.owner === p.id) {
+        p.ballAction = this.createBallAction(
+          p,
+          "shoot",
+          this.lastInput || queued.input,
+        );
+        this.actionPlayer = p.id;
+        control.bufferedAction = null;
+      }
+      return;
+    }
+    if (
       this.elapsed > queued.expiresAt ||
       this.selected !== queued.player ||
       (p.ballAction?.firstTime &&
@@ -393,6 +536,7 @@ export class Match {
       requiresPlant: false,
       power: queued.released ? queued.power : this.charge,
       finesse: queued.finesse,
+      chip: !!queued.chip || !!queued.input.chip,
       releasedAt: queued.pressedAt ?? queued.expiresAt - 1,
     });
     if (action.type === "shoot")
@@ -414,9 +558,9 @@ export class Match {
       queued = this.controls[p.team].bufferedAction;
     if (
       !a?.firstTime ||
-      !queued ||
+      (!queued && !a.scramble) ||
       this.ball.owner !== null ||
-      this.elapsed > queued.expiresAt
+      this.elapsed > (a.scramble ? a.releasedAt + 2.4 : queued.expiresAt)
     )
       return;
     const b = this.ball;
@@ -456,7 +600,11 @@ export class Match {
     const d = Math.hypot(input.x || 0, input.z || 0);
     if (d > 0.15) a.aim = { x: (input.x || 0) / d, z: (input.z || 0) / d };
   }
-  releaseAction(power = this.charge, finesse = false) {
+  releaseAction(
+    power = this.charge,
+    finesse = false,
+    chip = !!this.lastInput?.chip,
+  ) {
     const queued = this.controls[this.activeTeam].bufferedAction;
     if (queued && this.mode === "playing") {
       if (this.elapsed > queued.expiresAt) {
@@ -467,6 +615,7 @@ export class Match {
         power: clamp(power, 0, 1),
         finesse,
         released: true,
+        chip: !!chip || !!queued.input.chip,
       });
       this.charging = false;
       this.charge = 0;
@@ -475,8 +624,19 @@ export class Match {
     const p = this.players[this.actionPlayer],
       a = p?.ballAction;
     if (!a || a.stage !== "charging" || this.mode !== "playing") return false;
+    if (a.type === "shoot") {
+      a.heading = p.locomotion.heading;
+      a.approachSpeed = length(p.vx, p.vz);
+      a.movement = {
+        x: this.lastInput?.x || 0,
+        z: this.lastInput?.z || 0,
+        sprint: !!this.lastInput?.sprint,
+        jockey: !!this.lastInput?.jockey,
+      };
+    }
     a.power = clamp(power, 0, 1);
     a.finesse = finesse;
+    a.chip ||= chip;
     a.stage = "pending";
     a.releasedAt = this.elapsed;
     a.quickTouch = a.power <= 0.22 && length(p.vx, p.vz) < 3.7;
@@ -559,12 +719,28 @@ export class Match {
     };
   }
   executeAction(p, a) {
+    if (
+      this.field.duel &&
+      this.setPiece?.type !== "penalty" &&
+      !legalDuelShot(p, this.ball)
+    ) {
+      this.withTeam(p.team, () => this.cancelAction());
+      this.announce("CHUTE DE DENTRO DA SUA METADE", 1.2);
+      return;
+    }
     if (a.firstTime) {
       this.controls[p.team].bufferedAction = null;
       this.charging = false;
       this.charge = 0;
     }
     const b = this.ball;
+    if (a.scramble && a.type === "shoot" && length(p.vx, p.vz) > 3)
+      a.style = {
+        ...a.style,
+        name: "stretch-shot",
+        fall: true,
+        imbalance: 0.85,
+      };
     const facing = shotFacing(a.heading, a.aim);
     if (a.overcharged) {
       const skew =
@@ -589,9 +765,10 @@ export class Match {
       else this.lastPass = { ...result, type: a.type, target: null };
       this.lastAction = a.type;
     } else if (a.type === "shoot") {
-      const goalX = p.team === 0 ? 46 : -46;
+      const goalX = (p.team === 0 ? 1 : -1) * this.field.halfLength;
       const distance = length(goalX - b.x, b.z);
       const style = a.style;
+      const band = shotBand(a.power);
       const precision = shotPrecision(a.power, distance, {
         finesse: a.finesse,
         committed: style.fall,
@@ -599,32 +776,74 @@ export class Match {
       });
       // Shot input selects a point across the opponent goal, never an outward ray.
       // Error moves that point along the goal line, so the ball still travels goalward.
-      const targetZ = clamp(a.targetZ ?? 0, -3.2, 3.2);
+      const targetZ = clamp(
+        a.targetZ ?? 0,
+        -this.field.goalHalf + 0.3,
+        this.field.goalHalf - 0.3,
+      );
+      precision.spread *= a.chip ? 0.7 : 0.92;
       const error = (this.random() * 2 - 1) * precision.spread;
       const tx = goalX,
-        tz = targetZ + error;
+        tz =
+          band === "mishit"
+            ? (targetZ < 0 ? -1 : 1) * (this.field.goalHalf + 4 + a.power * 3)
+            : targetZ + error;
       const d = length(tx - b.x, tz - b.z) || 1;
       const momentum =
         a.approachSpeed > 1
           ? clamp((p.vx * a.aim.x + p.vz * a.aim.z - 1) * 0.35, 0, 2.5) *
             a.power
           : 0;
-      const speed =
+      let speed =
         (9 + Math.pow(a.power, 0.75) * 36 + momentum) *
         facing.speedScale *
         (a.finesse ? 0.86 : 1);
+      if (band === "long-range") speed *= 1.42;
+      if (a.finesse && !a.chip && band === "normal") speed *= 1.4;
+      if (band === "mishit") speed = 43 + 70 * (a.power - 0.9);
+      const lowFinesse = a.finesse && !a.chip && a.power <= 0.65;
+      if (lowFinesse) speed *= 1.5;
       const flight = Math.max(0.15, d / speed);
-      const lift = clamp(
+      let lift = clamp(
         (0.65 + a.power * 0.7 - 0.11) / flight + 0.5 * 9.81 * flight,
         0.3,
         (2.1 + 7.9 * a.power) * (1 - 0.85 * facing.difficulty),
       );
+      if (lowFinesse) lift = 0;
+      if (band !== "normal")
+        lift = loftedShotLift(
+          d,
+          speed,
+          b.y,
+          band === "mishit"
+            ? this.field.goalHeight + 3
+            : Math.min(this.field.goalHeight - 0.3, 1.65),
+          this.field.surface,
+        );
+      if (a.chip && band !== "mishit") {
+        const lob = chipTrajectory(
+          d,
+          a.power,
+          b.y,
+          this.field.goalHeight,
+          this.field.surface,
+        );
+        speed = lob.speed;
+        lift = lob.lift;
+      }
       this.kick(p, tx, tz, speed, lift);
+      if (a.chip) b.spin = 0;
+      // These two bands are straight strikes, so curl cannot undo the miss.
+      if (band !== "normal") b.spin = 0;
       this.lastShot = {
+        band,
+        chip: !!a.chip,
+        mishit: band === "mishit",
         power: a.power,
         speed,
         lift,
         finesse: a.finesse,
+        lowFinesse,
         target: { x: goalX, z: targetZ },
         actualTarget: { x: tx, z: tz },
         precision: precision.index,
@@ -635,7 +854,7 @@ export class Match {
         contactAt: this.elapsed,
         delay: this.elapsed - a.releasedAt,
       };
-      if (a.finesse) b.spin = b.z > 0 ? -5 : 5;
+      if (a.finesse && !a.chip && band === "normal") b.spin = b.z > 0 ? -5 : 5;
       this.lastAction = "shoot";
     } else {
       const q = selectPassTarget(this.players, p, a.aim, a.power, a.type);
@@ -646,7 +865,12 @@ export class Match {
       const tx = q.x + q.vx * lead + (through ? (p.team === 0 ? 3 : -3) : 0),
         tz = q.z + q.vz * lead;
       const distance = length(tx - b.x, tz - b.z);
-      const trajectory = passTrajectory(distance, a.power, lob);
+      const trajectory = passTrajectory(
+        distance,
+        a.power,
+        lob,
+        this.field.surface,
+      );
       this.kick(p, tx, tz, trajectory.speed, trajectory.lift);
       this.lastPass = {
         type: a.type,
@@ -665,6 +889,7 @@ export class Match {
       this.selectForTeam(q);
       this.lastAction = a.type;
     }
+    if (a.type === "pass") tryFlair(this, p, "pass");
     p.locomotion.strikeFollow =
       !a.style.fall && a.style.name !== "backheel"
         ? {
@@ -692,14 +917,23 @@ export class Match {
     if (this.actionPlayer === p.id) this.actionPlayer = null;
   }
   executeHeader(p, a) {
+    if (
+      this.field.duel &&
+      this.setPiece?.type !== "penalty" &&
+      !legalDuelShot(p, this.ball)
+    ) {
+      this.withTeam(p.team, () => this.cancelAction());
+      return;
+    }
     const b = this.ball,
       h = p.header;
+    const band = a.type === "shoot" ? shotBand(a.power) : "normal";
     const incomingSpeed = Math.hypot(b.vx, b.vy, b.vz);
     let tx,
       tz,
       target = null;
     if (a.type === "shoot") {
-      tx = p.team === 0 ? 46 : -46;
+      tx = (p.team === 0 ? 1 : -1) * this.field.halfLength;
       tz = clamp(
         (a.targetZ || 0) +
           (this.random() * 2 - 1) * (0.15 + (1 - a.power) * 0.3),
@@ -713,20 +947,34 @@ export class Match {
       tx = q.x + q.vx * 0.15;
       tz = q.z + q.vz * 0.15;
     }
+    if (band === "mishit") tz = (tz < 0 ? -1 : 1) * (this.field.goalHalf + 7);
     const distance = length(tx - b.x, tz - b.z);
-    const speed =
+    let speed =
       a.type === "shoot"
         ? clamp(10 + a.power * 10 + incomingSpeed * 0.18, 10, 24)
         : clamp(7 + distance * 0.4 + a.power * 4, 7, 18);
+    if (band === "long-range") speed *= 1.42;
+    if (band === "mishit") speed = 43 + 70 * (a.power - 0.9);
     const flight = Math.max(0.15, distance / speed);
-    const lift = clamp(
+    let lift = clamp(
       (0.65 - b.y) / flight + 4.905 * flight,
       -6,
       a.type === "shoot" ? 3.5 : 5,
     );
+    if (band !== "normal")
+      lift = loftedShotLift(
+        distance,
+        speed,
+        b.y,
+        band === "mishit"
+          ? this.field.goalHeight + 3
+          : Math.min(1.65, this.field.goalHeight - 0.3),
+        this.field.surface,
+      );
     const contact = { ...b },
       head = headPosition(p);
     this.kick(p, tx, tz, speed, lift);
+    if (band !== "normal") b.spin = 0;
     p.kick = 0;
     h.hit = true;
     h.hitAt = this.elapsed;
@@ -748,6 +996,8 @@ export class Match {
     if (a.type === "shoot")
       this.lastShot = {
         ...result,
+        band,
+        mishit: band === "mishit",
         target: { x: tx, z: tz },
         actualTarget: { x: tx, z: tz },
       };
@@ -781,8 +1031,8 @@ export class Match {
       return;
     if (b.owner === null) return;
     const p = this.players[b.owner],
-      a = p.ballAction;
-    if (p.keeper) return;
+      a = motionAction(p);
+    if (p.keeper && !this.field.duel) return;
     if (b.y > 2.2) {
       b.owner = null;
       p.ballAction = null;
@@ -790,7 +1040,7 @@ export class Match {
       this.charge = 0;
       return;
     }
-    if (a && length(b.x - p.x, b.z - p.z) > 4) {
+    if (a && length(b.x - p.x, b.z - p.z) > (a.scramble ? 6 : 4)) {
       this.cancelAction();
       return;
     }
@@ -914,6 +1164,8 @@ export class Match {
         player: p.id,
         team: p.team,
       };
+      if (this.field.duel && this.setPiece.type === "penalty")
+        p.duelReturn = true;
       this.setPiece = null;
     }
     this.physics.ball.setAngvel({ x: 0, y: 0, z: 0 }, true);
@@ -943,33 +1195,17 @@ export class Match {
     p.think = 0.8;
   }
   tackle(slide = false) {
-    if (this.setPiece || possessionTeam(this) === this.activeTeam) return;
-    let p = this.players[this.selected];
-    if (this.mode !== "playing" || p.tackle > 0) return;
-    p.tackle = slide ? 0.95 : 0.45;
-    p.sliding = slide;
-    p.vx += p.dx * 4;
-    p.vz += p.dz * 4;
-    let b = this.ball;
+    if (this.field.duel || this.field.altinha) return false;
     if (
-      length(p.x - b.x, p.z - b.z) < 2.4 &&
-      b.y < 1.1 &&
-      canContestBall(
-        p,
-        b.owner === null ? null : this.players[b.owner],
-        b,
-        this.elapsed,
-      )
-    ) {
-      b.owner = null;
-      b.vx = p.dx * 10;
-      b.vz = p.dz * 10;
-      b.vy = 0.8;
-      b.lastTeam = p.team;
-      this.kickCooldown = 0.17;
-      this.distributed?.contact(p, "tackle");
-    }
-    this.lastAction = slide ? "slide" : "tackle";
+      this.setPiece ||
+      this.foul ||
+      this.pendingRestart ||
+      possessionTeam(this) === this.activeTeam
+    )
+      return;
+    const p = this.players[this.selected];
+    if (this.mode !== "playing") return;
+    if (startSlide(this, p)) this.lastAction = slide ? "slide" : "tackle";
   }
   update(dt, input = {}, opponentInput = {}) {
     if (
@@ -979,7 +1215,16 @@ export class Match {
     )
       return;
     this.eventTime = Math.max(0, this.eventTime - dt);
+    if (this.field.footvolley) {
+      updateFootvolley(this, dt, input);
+      return;
+    }
+    if (this.field.altinha) {
+      updateAltinha(this, dt, input);
+      return;
+    }
     if (this.mode === "goal") {
+      celebrate(this, dt);
       this.restartTimer -= dt;
       this.integrateBall(dt);
       if (
@@ -1002,6 +1247,34 @@ export class Match {
       this.announce("FIM DE JOGO", 99);
       return;
     }
+    if (this.pendingRestart) {
+      const pending = this.pendingRestart;
+      for (const p of this.players) {
+        if (!(this.training && p.team === 1)) stepLocomotion(p, 0, 0, dt);
+        p.motion?.update(p, this, dt);
+      }
+      this.physics.preparePlayers(this.players, dt);
+      this.integrateBall(dt);
+      if (
+        this.elapsed >= pending.readyAt &&
+        (!this.distributed || this.distributed.isBallAuthority())
+      )
+        this.restart(pending.team, pending.x, pending.z, pending.message);
+      return;
+    }
+    if (this.foul) {
+      this.foul.time += dt;
+      for (const p of this.players) {
+        stepSpecial(this, p, dt);
+        p.motion?.update(p, this, dt);
+      }
+      if (this.foul.time > 1.7) {
+        const foul = this.foul;
+        this.foul = null;
+        placeFreeKick(this, foul);
+      }
+      return;
+    }
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
     for (const team of this.distributed
       ? [this.distributed.team]
@@ -1014,11 +1287,21 @@ export class Match {
         this.consumeBufferedAction();
         this.aimAction(teamInput);
         if (this.charging) {
-          this.charge = Math.min(1, this.charge + dt / 0.315);
+          const type =
+            this.players[this.actionPlayer]?.ballAction?.type ||
+            this.controls[team].bufferedAction?.type;
+          this.charge =
+            type === "shoot"
+              ? advanceShotCharge(
+                  this.charge,
+                  dt,
+                  !!teamInput.finesse && !teamInput.chip,
+                )
+              : Math.min(1, this.charge + dt / 0.315);
           const active = this.players[this.actionPlayer]?.ballAction;
           if (active) {
             active.heldSeconds = (active.heldSeconds || 0) + dt;
-            if (active.heldSeconds >= 1.3) {
+            if (active.type !== "shoot" && active.heldSeconds >= 1.3) {
               this.releaseAction(1);
               active.overcharged = true;
             }
@@ -1046,6 +1329,7 @@ export class Match {
     }
     const pass = activePass(this);
     const attackingTeam = possessionTeam(this);
+    updateSecondDefender(this, dt);
     const support = supportTargets(this.players, owner, b);
     const eligibleChaser = (p) =>
       !this.isControlled(p) &&
@@ -1074,6 +1358,10 @@ export class Match {
         this.distributed.stepRemote(p, dt);
         continue;
       }
+      if (stepSpecial(this, p, dt)) {
+        bicycleContact(this, p);
+        continue;
+      }
       const input = this.controls[p.team].lastInput;
       const control = this.controls[p.team];
       const defensiveAim =
@@ -1099,12 +1387,62 @@ export class Match {
         p.receiveTurn > 0 && length(p.vx, p.vz) < 3.5
           ? p.receiveFacing
           : undefined;
+      // A loose own touch does not erase an already released intention. Chase
+      // briefly, with real foot contact, and relinquish it on interception.
+      const pending = p.ballAction;
+      if (pending?.fromPossession && pending.stage === "pending") {
+        const gap = length(b.x - p.x, b.z - p.z);
+        if (gap > 1.4 || b.owner !== p.id) pending.scramble = true;
+        if (pending.scramble) {
+          if (
+            this.elapsed > pending.releasedAt + 2.4 ||
+            gap > 6 ||
+            (b.owner !== null && b.owner !== p.id) ||
+            (b.owner === null && b.lastTeam !== p.team)
+          ) {
+            this.withTeam(p.team, () => this.cancelAction());
+          } else {
+            pending.firstTime = b.owner === null;
+            pending.requiresPlant = false;
+            if (p.strikePlant) {
+              p.locomotion.feet[p.strikePlant.foot].special = null;
+              p.strikePlant = null;
+            }
+          }
+        }
+      }
       if (p.ballAction && !p.ballAction.firstTime && b.owner !== p.id) {
         p.ballAction = null;
         if (control.actionPlayer === p.id)
           this.withTeam(p.team, () => this.cancelAction());
       }
-      const action = p.ballAction;
+      if (
+        this.variant === "sand" &&
+        !this.isControlled(p) &&
+        !p.ballAction &&
+        b.owner === null &&
+        b.lastTeam === p.team &&
+        planBicycle(this, p, { type: "shoot", firstTime: true })
+      ) {
+        this.queueAIAction(
+          p,
+          "shoot",
+          (p.team === 0 ? 1 : -1) * this.field.halfLength,
+          0,
+          0.7,
+        );
+        p.ballAction.firstTime = true;
+        p.ballAction.requiresPlant = false;
+      }
+      const action = motionAction(p);
+      const bicycle = planBicycle(this, p, action);
+      if (bicycle) {
+        p.bicycle = bicycle;
+        p.nextBicycle = this.elapsed + (this.variant === "sand" ? 3 : 18);
+        p.ballMotion = p.header = p.rootWarp = null;
+        action.bicycle = true;
+        continue;
+      }
       stepHeader(
         p,
         b,
@@ -1182,6 +1520,11 @@ export class Match {
           0,
           1,
         );
+      } else if (this.field.duel) {
+        const target = duelAI(this, p);
+        tx = target.x;
+        tz = target.z;
+        speed = target.speed;
       } else if (p.keeper) {
         const control = keeperControl(p, b, this.elapsed);
         tx = control.x;
@@ -1193,13 +1536,13 @@ export class Match {
         tz = p.z * 0.82;
         speed = this.difficulty === "hard" ? 6.4 : 5.1;
         if (p.think <= 0 && !p.ballAction) {
-          let goal = dir * 46;
+          let goal = dir * this.field.halfLength;
           if (Math.abs(goal - p.x) < 25 && Math.abs(p.z) < 17) {
             this.queueAIAction(
               p,
               "shoot",
               goal,
-              Math.sin(this.elapsed * 1.4) * 2.7,
+              Math.sin(this.elapsed * 1.4) * (this.field.goalHalf - 0.35),
               0.65,
             );
             this.lastAction = "ai_shoot";
@@ -1234,6 +1577,29 @@ export class Match {
                 ? 6.7
                 : 5.6;
         }
+      }
+      if (p.secondPress && !action) {
+        const press = secondDefenderTarget(this, p);
+        tx = press.x;
+        tz = press.z;
+        speed = press.speed;
+      }
+      if (this.field.duel) {
+        if (p.duelReturn) {
+          tx = (p.team ? -1 : 1) * -2;
+          tz = 0;
+          speed = 6;
+          if (p.x * (p.team ? -1 : 1) < -0.5) p.duelReturn = false;
+        }
+        duelKeeperPose(this, p);
+      }
+      if (this.variant !== "match" && !this.field.duel) {
+        tx = clamp(
+          tx,
+          -this.field.halfLength + 0.8,
+          this.field.halfLength - 0.8,
+        );
+        tz = clamp(tz, -this.field.halfWidth + 0.8, this.field.halfWidth - 0.8);
       }
       // Until reception, steer even held movement toward a reachable future
       // ball position. First-time strikes retain their own approach controller.
@@ -1327,8 +1693,9 @@ export class Match {
           (length(targetX, targetZ) > 0.1 &&
             length(targetX, targetZ) < 3.2 &&
             length(p.vx, p.vz) < 4));
-      if (b.owner === p.id && !p.keeper) {
-        p.shield = shielding(p, this.players);
+      if (b.owner === p.id && (!p.keeper || this.field.duel)) {
+        p.shield =
+          this.isControlled(p) && p.jockey ? shielding(p, this.players) : null;
         if (p.shield && !action && length(p.vx, p.vz) < 3.5)
           p.faceHeading = Math.atan2(p.shield.x, p.shield.z);
         const guided = action
@@ -1371,15 +1738,24 @@ export class Match {
         targetZ = d ? (dz / d) * speed : 0;
         p.faceHeading = Math.atan2(action.aim.x, action.aim.z);
       }
-      // Preserve the requested exit direction while foot/ball guidance brakes
-      // or catches the ball. Facing must not wait for velocity to reverse.
+      // Follow the incoming ball while a turn awaits contact. After the touch,
+      // face the new exit direction while the body catches up.
       p.turnIntent =
         !action &&
         !p.shield &&
         !p.recovery &&
-        (b.owner !== p.id || length(b.x - p.x, b.z - p.z) < 1.3)
+        (b.owner !== p.id ||
+          p.dribbleState?.pursuingTouch ||
+          length(b.x - p.x, b.z - p.z) < 1.3)
           ? b.owner === p.id
-            ? p.dribbleIntent
+            ? p.dribbleState?.pursuingTouch &&
+              p.lastDribble?.vx * p.dribbleIntent.x +
+                p.lastDribble?.vz * p.dribbleIntent.z <
+                0.98 *
+                  length(p.lastDribble?.vx || 0, p.lastDribble?.vz || 0) *
+                  length(p.dribbleIntent.x, p.dribbleIntent.z)
+              ? { x: targetX, z: targetZ }
+              : p.dribbleIntent
             : { x: targetX, z: targetZ }
           : null;
       p.moveIntent = { x: targetX, z: targetZ };
@@ -1403,17 +1779,23 @@ export class Match {
         }
         stepLocomotion(p, targetX, targetZ, dt, {
           charging:
-            control.charging && this.isControlled(p) && b.owner === p.id,
+            !!action &&
+            control.charging &&
+            this.isControlled(p) &&
+            b.owner === p.id,
           charge: control.charge,
           reach: p.reach,
         });
       }
-      if (p.keeper && (!this.training || p.team === 0))
+      if (p.keeper && p.goalkeeping && (!this.training || p.team === 0))
         stepKeeper(p, b, this.elapsed, dt);
       p.warpVelocity = { x: 0, z: 0 };
       if (p.motion || this.headless) {
         const preparing =
-          control.charging && this.isControlled(p) && b.owner === p.id;
+          !!action &&
+          control.charging &&
+          this.isControlled(p) &&
+          b.owner === p.id;
         if (p.reach && !p.wasReaching) {
           const heading = p.locomotion.heading;
           const target = preparing
@@ -1436,18 +1818,46 @@ export class Match {
           p.warpVelocity = { x: delta.x / dt, z: delta.z / dt };
         }
       }
-      if (p.x < -45.5 || p.x > 45.5) p.vx = 0;
-      if (p.z < -29.5 || p.z > 29.5) p.vz = 0;
-      p.x = clamp(p.x, -45.5, 45.5);
-      p.z = clamp(p.z, -29.5, 29.5);
+      if (
+        p.x < -(this.field.halfLength + (this.field.apron || 0)) + 0.5 ||
+        p.x > this.field.halfLength + (this.field.apron || 0) - 0.5
+      )
+        p.vx = 0;
+      if (
+        p.z < -(this.field.halfWidth + (this.field.apron || 0)) + 0.5 ||
+        p.z > this.field.halfWidth + (this.field.apron || 0) - 0.5
+      )
+        p.vz = 0;
+      p.x = clamp(
+        p.x,
+        -(this.field.halfLength + (this.field.apron || 0)) + 0.5,
+        this.field.halfLength + (this.field.apron || 0) - 0.5,
+      );
+      p.z = clamp(
+        p.z,
+        -(this.field.halfWidth + (this.field.apron || 0)) + 0.5,
+        this.field.halfWidth + (this.field.apron || 0) - 0.5,
+      );
+      constrainDuelPlayer(this, p);
       p.locomotion.lastX = p.x;
       p.locomotion.lastZ = p.z;
     }
     for (const p of this.players)
       if (!this.distributed || p.team === this.distributed.team)
+        slideContacts(this, p);
+    if (this.foul) return;
+    for (const p of this.players)
+      if (
+        (!this.distributed || p.team === this.distributed.team) &&
+        !unavailable(p)
+      )
         this.withTeam(p.team, () => this.updateFirstTimeContact(p, dt));
+    if (this.field.duel) {
+      this.updateGoalkeepers(dt);
+      if (this.setPiece) return;
+    }
     this.tryAutomaticReception(input, dt);
-    this.updateGoalkeepers(dt);
+    if (!this.field.duel) this.updateGoalkeepers(dt);
     this.physics.preparePlayers(
       this.players,
       dt,
@@ -1458,9 +1868,16 @@ export class Match {
       this.updateBallControl(dt),
     );
     this.integrateBall(dt);
-    this.players.forEach((p) =>
-      this.withTeam(p.team, () => p.motion?.update(p, this, dt)),
-    );
+    if (this.field.duel)
+      this.players.forEach((p) => constrainDuelPlayer(this, p));
+    this.players.forEach((p) => {
+      const speed = Math.hypot(p.vx, p.vz);
+      p.topSpeed =
+        !!p.sprintRequested &&
+        !unavailable(p) &&
+        speed > (p.topSpeed ? 7.5 : 8.2);
+      this.withTeam(p.team, () => p.motion?.update(p, this, dt));
+    });
   }
   updateGoalkeepers(dt) {
     const b = this.ball;
@@ -1469,6 +1886,10 @@ export class Match {
       const g = p.goalkeeping;
       if (!p.keeper || !g || (this.training && p.team === 1)) continue;
       if (g.holding && b.owner === p.id) {
+        if (this.field.duel && this.elapsed > g.holdUntil) {
+          dropDuelBall(this, p);
+          continue;
+        }
         const h = g.hands[0],
           other = g.hands[1];
         Object.assign(b, {
@@ -1484,13 +1905,66 @@ export class Match {
           g.holding = false;
           g.result = null;
           g.cooldown = this.elapsed + 0.6;
-          this.kick(p, 0, p.z > 0 ? 12 : -12, 24, 6);
+          const mates = this.players.filter(
+            (q) => q.team === p.team && q !== p,
+          );
+          const safety = (q) =>
+            Math.min(
+              ...this.players
+                .filter((r) => r.team !== p.team)
+                .map((r) => length(q.x - r.x, q.z - r.z)),
+            ) -
+            0.08 * length(q.x - p.x, q.z - p.z);
+          const target = mates.sort((a, c) => safety(c) - safety(a))[0];
+          if (!target) continue;
+          const d = length(target.x - b.x, target.z - b.z),
+            flight = clamp(0.8 + d / 25, 0.9, 2);
+          const speed = (d / flight) * 1.08,
+            lift = (0.35 - b.y) / flight + 4.905 * flight;
+          this.withTeam(p.team, () =>
+            this.kick(
+              p,
+              target.x + target.vx * 0.25,
+              target.z + target.vz * 0.25,
+              speed,
+              lift,
+            ),
+          );
+          this.lastPass = {
+            type: "pass",
+            style: "keeper",
+            target: target.id,
+            team: p.team,
+            flight: this.ballFlight,
+            contactAt: this.elapsed,
+            receiveWindow: flight * 2 + 0.8,
+            speed,
+            lift,
+          };
+          this.selectForTeam(target);
         }
         continue;
       }
-      if (b.owner !== null || this.elapsed < (g.cooldown || 0)) continue;
+      if (
+        (b.owner !== null &&
+          (!g.smother || this.players[b.owner]?.team === p.team)) ||
+        this.elapsed < (g.cooldown || 0)
+      )
+        continue;
       const hand = keeperHandContact(p, b, dt);
-      if (hand < 0 || Math.abs(p.x) < 29.5 || Math.abs(p.z) > 20) continue;
+      if (hand < 0) continue;
+      if (this.field.duel) {
+        if (!inOwnArea(p, b)) {
+          duelHandPenalty(this, p);
+          return;
+        }
+      } else if (
+        Math.abs(p.x) <
+          this.field.halfLength -
+            Math.min(16.5, this.field.halfLength * 0.35) ||
+        Math.abs(p.z) > Math.min(20, this.field.halfWidth * 0.8)
+      )
+        continue;
       const speed = length(b.vx, b.vz),
         dir = p.team === 0 ? 1 : -1;
       const caught = speed < 14 && Math.abs(b.z - p.z) < 1;
@@ -1510,10 +1984,16 @@ export class Match {
         point: { x: b.x, y: b.y, z: b.z },
       };
       if (caught) {
+        if (b.owner !== null) {
+          const old = this.players[b.owner];
+          old.ballAction = old.ballMotion = null;
+          this.withTeam(old.team, () => this.cancelAction());
+        }
+        g.smother = false;
         b.owner = p.id;
         b.vx = b.vy = b.vz = 0;
         g.holding = true;
-        g.holdUntil = this.elapsed + 0.9;
+        g.holdUntil = this.elapsed + (this.field.duel ? 0.35 : 0.9);
       } else {
         b.vx = dir * Math.max(5, speed * 0.45);
         b.vz = (Math.sign(b.z) || g.side || 1) * Math.max(5, speed * 0.4);
@@ -1540,9 +2020,16 @@ export class Match {
     const candidates = [];
     for (const p of this.players) {
       if (this.distributed && p.team !== this.distributed.team) continue;
-      if (p.ballAction?.firstTime) continue;
       if (
-        p.keeper ||
+        p.ballAction?.firstTime ||
+        p.goalkeeping?.holding ||
+        unavailable(p) ||
+        (p.evade?.height || 0) > 0.2
+      )
+        continue;
+      if (
+        (p.keeper && !this.field.duel) ||
+        p.duelReturn ||
         this.restartRestriction?.player === p.id ||
         (this.training && p.team === 1) ||
         (p.id === this.lastKicker && this.elapsed - this.kickReleasedAt < 0.45)
@@ -1566,6 +2053,18 @@ export class Match {
         ? this.controls[p.team].lastInput
         : p.moveIntent;
       const opportunity = receptionOpportunity(p, b, intent);
+      if (
+        opportunity &&
+        currentOwner === null &&
+        this.lastPass?.flight === this.ballFlight
+      ) {
+        opportunity.probability = passReceptionProbability(
+          p,
+          opportunity,
+          intent,
+          this.lastPass.team,
+        );
+      }
       if (!opportunity) {
         p.challenge = null;
         if (
@@ -1589,12 +2088,17 @@ export class Match {
           owner: currentOwner,
           kind: opportunity.kind,
           success: receptionRoll(opportunity, this.random),
+          probability: opportunity.probability,
           lastSeen: this.elapsed,
           startedAt: this.elapsed,
           landings: p.locomotion.feet.reduce((n, f) => n + f.landings, 0),
         };
       }
       const attempt = p.receptionAttempt;
+      if (opportunity.probability === 1) {
+        attempt.success = true;
+        attempt.probability = 1;
+      }
       attempt.lastSeen = this.elapsed;
       // A failed attempt cannot be rerolled every frame or upgraded to 99.9%.
       p.reach = {
@@ -1622,10 +2126,11 @@ export class Match {
     candidates.sort((a, c) => a.distance - c.distance);
     for (const { p, attempt } of candidates) {
       if (!attempt.success) continue;
+      if (currentOwner === null) tryFlair(this, p, "receive");
       this.lastReception = {
         player: p.id,
         kind: attempt.kind,
-        probability: RECEPTION[attempt.kind].probability,
+        probability: attempt.probability,
         success: true,
         speed: length(b.vx - p.vx, b.vz - p.vz),
         reached:
@@ -1663,56 +2168,83 @@ export class Match {
     }
   }
   integrateBall(dt) {
+    const {
+      halfLength: L,
+      halfWidth: W,
+      goalHalf: G,
+      goalHeight: H,
+    } = this.field;
     let b = this.ball,
       oldX = b.x,
       oldZ = b.z,
       oldY = b.y;
     this.physics.step(this, dt);
+    if (
+      this.field.duel &&
+      b.owner !== null &&
+      this.setPiece?.type !== "penalty"
+    ) {
+      const p = this.players[b.owner],
+        dir = p.team ? -1 : 1;
+      if (b.x * dir > 0.12) {
+        b.owner = null;
+        this.withTeam(p.team, () => this.cancelAction());
+      }
+    }
+    if (this.pendingRestart) return;
     if (this.distributed && !this.distributed.isBallAuthority()) return;
     if (this.doubleTouch) {
       const team = this.doubleTouch.team;
       this.doubleTouch = null;
       this.restart(
         1 - team,
-        clamp(b.x, -43, 43),
-        clamp(b.z, -28, 28),
+        clamp(b.x, -L + 3, L - 3),
+        clamp(b.z, -W + 2, W - 2),
         "TIRO LIVRE INDIRETO",
       );
       return;
     }
     if (this.mode === "goal") {
-      if (Math.abs(b.x) > 48) {
-        b.x = Math.sign(b.x) * 48;
+      if (Math.abs(b.x) > L + 2) {
+        b.x = Math.sign(b.x) * (L + 2);
         b.vx *= -0.2;
       }
-      if (Math.abs(b.z) > 3.5) {
-        b.z = clamp(b.z, -3.5, 3.5);
+      if (Math.abs(b.z) > G) {
+        b.z = clamp(b.z, -G, G);
         b.vz *= -0.2;
       }
       return;
     }
     const sideTime =
-      Math.abs(b.z) > 30.11
-        ? clamp((Math.sign(b.z) * 30.11 - oldZ) / (b.z - oldZ || 1), 0, 1)
+      Math.abs(b.z) > W + 0.11
+        ? clamp((Math.sign(b.z) * (W + 0.11) - oldZ) / (b.z - oldZ || 1), 0, 1)
         : Infinity;
     const endTime =
-      Math.abs(b.x) > 46.11
-        ? clamp((Math.sign(b.x) * 46.11 - oldX) / (b.x - oldX || 1), 0, 1)
+      Math.abs(b.x) > L + 0.11
+        ? clamp((Math.sign(b.x) * (L + 0.11) - oldX) / (b.x - oldX || 1), 0, 1)
         : Infinity;
-    if (sideTime < endTime) {
-      this.restart(
+    if (!this.field.duel && sideTime < endTime) {
+      this.ballOut(
         1 - b.lastTeam,
-        clamp(oldX + (b.x - oldX) * sideTime, -46, 46),
-        Math.sign(b.z) * 30,
+        clamp(oldX + (b.x - oldX) * sideTime, -L, L),
+        Math.sign(b.z) * W,
         "LATERAL",
       );
       return;
     }
-    if (Math.abs(b.x) > 46.11) {
-      let t = clamp((Math.sign(b.x) * 46.11 - oldX) / (b.x - oldX || 1), 0, 1);
+    if (Math.abs(b.x) > L + 0.11) {
+      let t = clamp(
+        (Math.sign(b.x) * (L + 0.11) - oldX) / (b.x - oldX || 1),
+        0,
+        1,
+      );
       let crossZ = oldZ + (b.z - oldZ) * t,
         crossY = oldY + (b.y - oldY) * t;
-      if (Math.abs(crossZ) < 3.55 && crossY < 2.33) {
+      if (
+        Math.abs(crossZ) < G - 0.11 &&
+        crossY < H - 0.11 &&
+        (!this.field.duel || oldX * Math.sign(b.x) <= L + 0.11)
+      ) {
         let team = b.x > 0 ? 0 : 1;
         if (
           this.restartRestriction?.type === "throw" ||
@@ -1720,15 +2252,16 @@ export class Match {
             this.restartRestriction.team !== team)
         ) {
           const ownGoal = this.restartRestriction.team !== team;
-          this.restart(
+          this.ballOut(
             ownGoal ? team : 1 - team,
-            Math.sign(b.x) * (ownGoal ? 45.6 : 40),
-            ownGoal ? Math.sign(crossZ || 1) * 29.6 : 0,
+            Math.sign(b.x) * (ownGoal ? L - 0.4 : 40),
+            ownGoal ? Math.sign(crossZ || 1) * (W - 0.4) : 0,
             ownGoal ? "ESCANTEIO" : "TIRO DE META",
           );
           return;
         }
         this.score[team]++;
+        this.lastGoalTeam = team;
         this.mode = "goal";
         this.restartTimer = 3;
         this.restartTeam = this.training ? 0 : 1 - team;
@@ -1736,69 +2269,52 @@ export class Match {
         this.announce(team === 0 ? "GOOOL! · ATLÉTICO" : "GOOOL! · UNIÃO", 3);
         return;
       }
+      if (this.field.duel) return;
       let defending = b.x > 0 ? 1 : 0;
       let corner = b.lastTeam === defending;
-      this.restart(
+      this.ballOut(
         corner ? 1 - defending : defending,
-        corner ? Math.sign(b.x) * 45 : Math.sign(b.x) * 40,
-        corner ? Math.sign(b.z || 1) * 29 : 0,
+        corner ? Math.sign(b.x) * (L - 1) : Math.sign(b.x) * (L - 6),
+        corner ? Math.sign(b.z || 1) * (W - 1) : 0,
         corner ? "ESCANTEIO" : "TIRO DE META",
       );
-    } else if (Math.abs(b.z) > 30.11)
-      this.restart(
+    } else if (!this.field.duel && Math.abs(b.z) > W + 0.11)
+      this.ballOut(
         1 - b.lastTeam,
-        clamp(b.x, -44, 44),
-        Math.sign(b.z) * 30,
+        clamp(b.x, -L + 2, L - 2),
+        Math.sign(b.z) * W,
         "LATERAL",
       );
   }
-  restart(team, x, z, message) {
+  ballOut(team, x, z, message) {
+    if (this.variant === "street") return this.restart(team, x, z, message);
+    if (this.pendingRestart) return;
     this.cancelAllActions();
-    if (this.training) team = 0;
-    if (message === "LATERAL" || message === "ESCANTEIO") {
-      placeSetPiece(
-        this,
-        team,
-        x,
-        z,
-        message === "LATERAL" ? "throw" : "corner",
-      );
-      this.announce(message);
-      this.distributed?.reset();
-      return;
-    }
-    this.setPiece = null;
-    this.restartRestriction = null;
-    this.ballFlight++;
-    let p = this.players
-      .filter((q) => q.team === team && !q.keeper)
-      .sort((a, c) => length(a.x - x, a.z - z) - length(c.x - x, c.z - z))[0];
-    p.x = x;
-    p.z = z;
-    p.vx = 0;
-    p.vz = 0;
-    p.dx = team === 0 ? 1 : -1;
-    p.dz = 0;
-    Object.assign(this.ball, {
-      x: x + p.dx * 0.7,
-      y: 0.11,
-      z,
-      vx: 0,
-      vz: 0,
-      vy: 0,
-      owner: p.id,
-      lastTeam: team,
-    });
-    this.selectForTeam(p);
-    this.kickCooldown = 0.8;
-    p.think = 0.8;
-    this.announce(message);
+    this.ball.owner = null;
+    this.pendingRestart = { team, x, z, message, readyAt: this.elapsed + 2 };
+    this.announce(message, 2);
     this.distributed?.reset();
   }
+  restart(team, x, z, message) {
+    this.pendingRestart = null;
+    this.cancelAllActions();
+    if (this.training) team = 0;
+    const type =
+      message === "ESCANTEIO"
+        ? "corner"
+        : message === "LATERAL" && this.variant === "match"
+          ? "throw"
+          : "kickin";
+    placeSetPiece(this, team, x, z, type);
+    this.announce(message, 2.2);
+    this.distributed?.reset();
+  }
+
   updateSetPiece(dt) {
     updateSetPiece(this, dt);
   }
   recordBallTouch(p) {
+    if (this.pendingRestart) return;
     if (this.distributed && p.team !== this.distributed.team) return;
     this.distributed?.contact(p, "contact");
     if (this.setPiece) return;
@@ -1821,6 +2337,8 @@ export class Match {
   snapshot() {
     return {
       mode: this.mode,
+      altinha: this.altinha ?? null,
+      footvolley: this.footvolley ?? null,
       physics: this.physics.snapshot(),
       animation: this.players[this.selected]?.motion?.snapshot() ?? null,
       coordinates:
@@ -1831,6 +2349,18 @@ export class Match {
       training: this.training,
       possessionTeam: possessionTeam(this),
       setPiece: this.setPiece,
+      foul: this.foul,
+      pendingRestart: this.pendingRestart,
+      lastTackle: this.lastTackle,
+      special: this.players.map((p) => ({
+        id: p.id,
+        slide: p.slide,
+        knockdown: p.knockdown,
+        evade: p.evade,
+        bicycle: p.bicycle,
+        celebration: p.celebration,
+        topSpeed: !!p.topSpeed,
+      })),
       selected: this.selected,
       charge: this.charge,
       charging: this.charging,

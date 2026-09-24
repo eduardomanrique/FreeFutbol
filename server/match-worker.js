@@ -1,3 +1,4 @@
+import { requestVolley } from "../src/footvolley.js";
 import { parentPort, workerData } from "node:worker_threads";
 import { performance } from "node:perf_hooks";
 import { Match } from "../src/simulation.js";
@@ -9,16 +10,21 @@ import {
   encodeState,
 } from "../shared/protocol.js";
 const match = new Match({ multiplayer: true, headless: true });
-match.start(workerData.duration, "normal");
+match.start(workerData.duration, "normal", false, workerData.mode || "match");
+const volley = !!match.field.footvolley;
+if (volley) {
+  match.footvolley.humans = workerData.humans;
+  match.volleyInputs = [{}, {}, {}, {}];
+}
 let tick = 0,
   paused = true,
   last = performance.now(),
   accumulator = 0;
 const neutral = [true, true];
-const inputs = [{}, {}],
-  queues = [[], []],
-  received = [0, 0],
-  acks = [-1, -1];
+const inputs = [{}, {}, {}, {}],
+  queues = [[], [], [], []],
+  received = [0, 0, 0, 0],
+  acks = [-1, -1, -1, -1];
 let busyMs = 0,
   measuredTicks = 0,
   maxTickMs = 0,
@@ -32,10 +38,15 @@ function neutralize(team) {
 parentPort.on("message", (message) => {
   if (message.type === "input") {
     if (paused) return;
-    const { team, input } = message;
+    const team = volley ? message.slot : message.team,
+      input = message.input;
     if (queues[team].length >= 120) return;
     queues[team].push(input);
     received[team] = performance.now();
+  } else if (message.type === "seat" && volley) {
+    match.footvolley.humans[message.slot] = message.connected;
+    inputs[message.slot] = {};
+    queues[message.slot] = [];
   } else if (message.type === "pause") {
     paused = message.value;
     for (const team of [0, 1]) neutralize(team);
@@ -47,7 +58,9 @@ parentPort.on("message", (message) => {
 function publish() {
   parentPort.postMessage({
     type: "snapshot",
-    payload: encodeState(renderState(match, tick, acks)),
+    payload: encodeState(
+      renderState(match, tick, volley ? acks : acks.slice(0, 2)),
+    ),
     tick,
     finished: match.mode === "finished",
     metrics: {
@@ -58,6 +71,24 @@ function publish() {
   });
 }
 function simulate() {
+  if (volley) {
+    for (let id = 0; id < 4; id++) {
+      for (const input of queues[id]) {
+        if (input.seq <= acks[id]) continue;
+        acks[id] = input.seq;
+        inputs[id] = input;
+        for (const e of input.events)
+          if (e.type === "begin") requestVolley(match, e.action, input, id);
+      }
+      queues[id] = [];
+      match.volleyInputs[id] =
+        performance.now() - received[id] > INPUT_TIMEOUT_MS ? {} : inputs[id];
+    }
+    match.update(1 / TICK_RATE);
+    tick++;
+    return;
+  }
+
   for (const team of [0, 1]) {
     match.withTeam(team, () => {
       for (const input of queues[team]) {

@@ -1,3 +1,4 @@
+import { motionAction } from "./action-state.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Gameplay calibration informed by support-leg braking and trunk/pelvis
@@ -39,14 +40,14 @@ export function stepBodyExpression(p, dt) {
   );
   const turning = clamp(error / 1.2, -1, 1);
   const active =
-    p.dribbleState && !p.ballAction && !p.recovery && !p.shield
+    p.dribbleState && !motionAction(p) && !p.recovery && !p.shield
       ? clamp(speed / 0.8, 0, 1)
       : 0;
   // Transfer weight with actual supports. No idle dance or input delay.
   const transfer = -(l.loadShift || 0);
   const softness = 1 - 0.55 * clamp(speed / 9, 0, 1);
   const sway = active * (turning * 0.8 + transfer * 0.25 * softness);
-  const action = p.ballAction;
+  const action = motionAction(p);
   const follow = l.strikeFollow;
   if (follow) {
     follow.time += dt;
