@@ -202,7 +202,10 @@ test("ginga follows the cut side, stays bounded, and settles when play stops", (
     assert.ok(Math.abs(e.shift) < 0.06);
     assert.ok(e.arms > 0.04);
     assert.ok(e.crouch > 0.04, "cut lowers the posture target");
-    assert.ok(p.locomotion.height < beforeHeight - 0.025, "physical centre of mass lowers during the cut");
+    assert.ok(
+      p.locomotion.height < beforeHeight - 0.025,
+      "physical centre of mass lowers during the cut",
+    );
     assert.ok(e.fold > 0.1, "cut bends the trunk");
     p.dribbleState = null;
     p.turnIntent = null;
@@ -214,4 +217,32 @@ test("ginga follows the cut side, stays bounded, and settles when play stops", (
     twists[0] * twists[1] < 0,
     "opposite cuts have opposite hip rotation",
   );
+});
+
+test("protect walks, unmodified movement keeps normal pace, and sprint stays fastest", () => {
+  const speeds = [];
+  for (const command of [
+    { jockey: true },
+    {},
+    { sprint: true },
+    { jockey: true, sprint: true },
+  ]) {
+    const { m, p } = setup();
+    try {
+      p.id = 0;
+      m.players = [p];
+      m.selected = 0;
+      m.ball.owner = null;
+      m.ball.x = -35;
+      m.ball.z = 25;
+      for (let i = 0; i < 300; i++) m.update(1 / 120, { x: 1, ...command });
+      speeds.push(Math.hypot(p.vx, p.vz));
+      assert.equal(p.walkRequested, !!command.jockey);
+    } finally {
+      m.physics.dispose();
+    }
+  }
+  assert.ok(speeds[0] < speeds[1] - 1);
+  assert.ok(speeds[1] < speeds[2] - 1);
+  assert.ok(Math.abs(speeds[0] - speeds[3]) < 0.1);
 });

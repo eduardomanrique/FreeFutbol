@@ -4,6 +4,12 @@ import {
   pickupFoot,
   shoulderMotion,
 } from "./altinha-contact.js";
+import {
+  volleyJump,
+  volleyJumpPose,
+  VOLLEY_PREPARE,
+  volleyFootSurface,
+} from "./volley-motion.js";
 import { bindKneeHinge, solveKneeHinge } from "./leg-hinge.js";
 import { poseAroundLeg } from "./altinha-around.js";
 import { motionAction } from "./action-state.js";
@@ -978,16 +984,39 @@ function poseGoalkeeper(rig, p) {
 }
 
 function poseAltinha(rig, p, m) {
-  const action = p.altinhaPose,
-    time = m.elapsed,
+  let action = p.altinhaPose;
+  const time = m.elapsed,
     heading = p.locomotion.heading;
+  if (
+    m.field.footvolley &&
+    action &&
+    action.hitAt == null &&
+    !action.dive &&
+    action.jumpAt == null
+  ) {
+    const height =
+      action.kind === "head"
+        ? 1.75
+        : action.kind === "chest"
+          ? 1.45
+          : action.kind === "thigh"
+            ? 0.92
+            : 0.55;
+    // Keep the sampled walk/run until the actual contact window. Planting the
+    // chest pose or holding up one foot during the whole approach caused sliding.
+    if (
+      Math.hypot(m.ball.x - p.x, m.ball.z - p.z) > 0.9 ||
+      m.ball.y > height + 0.4
+    )
+      action = null;
+  }
   const clamp = T.MathUtils.clamp,
     smooth = (x) => {
       x = clamp(x, 0, 1);
       return x * x * (3 - 2 * x);
     };
   const speed = Math.hypot(p.vx, p.vz),
-    quiet = 1 - clamp(speed / 2.2, 0, 1);
+    quiet = 1 - clamp(speed / (m.field.footvolley ? 0.35 : 2.2), 0, 1);
   const forward = new T.Vector3(Math.sin(heading), 0, Math.cos(heading));
   const right = new T.Vector3(Math.cos(heading), 0, -Math.sin(heading));
   const up = new T.Vector3(0, 1, 0);
@@ -997,7 +1026,7 @@ function poseAltinha(rig, p, m) {
       ? 1 -
         smooth(
           (time - (action.hitAt ?? action.landedAt)) /
-            (action.rescue || action.dive ? 1 : 0.48),
+            (action.acrobatic ? 1.45 : action.rescue || action.dive ? 1 : 0.48),
         )
       : 1;
   const landingAge =
@@ -1006,9 +1035,17 @@ function poseAltinha(rig, p, m) {
     landingAge > 0
       ? smooth(landingAge / 0.18) * (1 - smooth((landingAge - 0.5) / 0.5))
       : 0;
-  const weight = enter * release,
+  const jumpPose = volleyJumpPose(action, time);
+  const weight =
+      enter *
+      release *
+      (action?.jumpAt != null
+        ? smooth((time - action.jumpAt - VOLLEY_PREPARE) / 0.12)
+        : 1),
     side = action?.side ?? 1;
   const bicycle = action?.kind === "bicycle";
+  const highKick = action?.kind === "high-kick";
+  const jump = volleyJump(action, time);
   const rescueTime = action?.rescue
     ? smooth((time - action.rescue.at) / 0.14)
     : 0;
@@ -1037,6 +1074,24 @@ function poseAltinha(rig, p, m) {
     0.045 * weight +
     0.009 * breathing * quiet -
     Math.max((action?.crouch || 0) * weight, 0.44 * kneel);
+  rig.root.position.y += jump - jumpPose.crouch;
+  if (highKick) {
+    rig.root.rotateX(-0.35 * weight);
+    rig.root.rotateZ(-side * 1.15 * weight);
+    rig.root.updateMatrixWorld(true);
+    const pelvis = rig.pelvis.getWorldPosition(new T.Vector3());
+    rig.root.position.x += (p.x - forward.x * 0.12 - pelvis.x) * weight;
+    rig.root.position.z += (p.z - forward.z * 0.12 - pelvis.z) * weight;
+    rig.root.position.y += (1.02 + jump - pelvis.y) * weight;
+  }
+  if (action?.acrobatic) {
+    const age = time - action.jumpAt - VOLLEY_PREPARE;
+    const fall = smooth((age - 0.5) / 0.3) * (1 - smooth((age - 1.05) / 0.6));
+    rig.root.rotateZ(-side * (1.5 - 1.15 * weight) * fall);
+    rig.root.updateMatrixWorld(true);
+    const pelvis = rig.pelvis.getWorldPosition(new T.Vector3());
+    rig.root.position.y += (0.32 - pelvis.y) * fall;
+  }
   if (action?.dive) {
     // Lean back and fall sideways while extending the kicking leg; recover
     // after the contact (or missed attempt), with no change to knee axes.
@@ -1066,6 +1121,7 @@ function poseAltinha(rig, p, m) {
           : 0) * weight;
   turn(rig.pelvis, up, twist);
   turn(rig.pelvis, right, fold * 0.72);
+  turn(rig.torso, right, jumpPose.lean);
   turn(rig.torso, up, -twist * 0.65);
   turn(rig.torso, forward, side * 0.075 * weight);
   turn(
@@ -1107,6 +1163,8 @@ function poseAltinha(rig, p, m) {
       action.contact && action.hitAt != null
         ? action.contact
         : bodySurface(p, action, m.ball, time);
+    if (action.jumpAt != null && action.hitAt == null)
+      surface.y += jump - jumpPose.crouch;
     const shoulder = action.kind === "shoulder",
       head = action.kind === "head";
     const shrug = shoulder ? shoulderMotion(action, m.ball, time) : null;
@@ -1186,10 +1244,18 @@ function poseAltinha(rig, p, m) {
           contactFoot === leg.foot ? 0.11 : 0.035,
           0.1 - 0.45 * kneel,
         );
+    ground.y += jump + (highKick && i !== index ? 0.3 * weight : 0);
     target.lerp(ground, planted ? 1 : quiet);
     if (lifted && i === index) {
       let desired;
-      if (action.kind === "pickup" && action.hitAt == null) {
+      if (highKick) {
+        const f = volleyFootSurface(p, action, time);
+        desired = new T.Vector3(f.x, f.y, f.z);
+        desired.lerp(
+          localTarget(side * 0.18, 0.08, 0.4),
+          smooth((time - action.jumpAt - VOLLEY_PREPARE - 0.5) / 0.3),
+        );
+      } else if (action.kind === "pickup" && action.hitAt == null) {
         const f = pickupFoot(p, action, m.ball, time);
         desired = new T.Vector3(f.x, f.y, f.z);
       } else if (
@@ -1244,7 +1310,13 @@ function poseAltinha(rig, p, m) {
         clamp(
           desired.y,
           action.kind === "pickup" ? 0.025 : 0.08,
-          bicycle ? 1.85 : action.kind === "high-heel" ? 1.25 : 1.08,
+          highKick
+            ? 1.68 + jump
+            : bicycle
+              ? 1.85
+              : action.kind === "high-heel"
+                ? 1.25
+                : 1.08,
         ),
         z,
       );
@@ -1253,7 +1325,7 @@ function poseAltinha(rig, p, m) {
     const kneeHint = forward
       .clone()
       .addScaledVector(right, legSide * 0.12)
-      .addScaledVector(up, bicycle ? 1.5 * weight : 0);
+      .addScaledVector(up, bicycle || highKick ? 1.5 * weight : 0);
     if (action?.kind === "high-heel" && i === index)
       kneeHint.copy(forward).multiplyScalar(-0.2).addScaledVector(up, -1);
     leg.hip.userData.kneeForward = kneeHint;

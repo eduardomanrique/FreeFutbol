@@ -4,7 +4,9 @@ import {
   PICKUPS,
   pickupFoot,
 } from "./altinha-contact.js";
-import { stepBallMotion } from "./ball-physics.js";
+import { guideDribbler, dribbleImpulse } from "./dribbling.js";
+import { rollingResistance } from "./surfaces.js";
+import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
 import { initLocomotion, stepLocomotion } from "./locomotion.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const homes = [
@@ -41,6 +43,9 @@ function resetCircle(m, starter = 0) {
       altinhaPose: null,
       altinhaPending: null,
       altinhaTouches: 0,
+      lastDribble: null,
+      groundTouch: null,
+      nextGroundTouchAt: 0,
     });
     initLocomotion(p);
   });
@@ -244,6 +249,8 @@ export function requestAltinha(m, type, input = {}) {
   )
     return false;
   if (s.phase === "ready") {
+    if (Math.hypot(b.x - p.x, b.z - p.z) > 1) return false;
+    p.groundTouch = null;
     s.phase = "serving";
     s.lastAttempt = 0;
     s.pending = null;
@@ -679,6 +686,12 @@ function movePlayers(m, dt, input) {
       m.elapsed - p.altinhaPose.hitAt < 0.6
     )
       vx = vz = 0;
+    if (i === m.selected && s.phase === "ready") {
+      p.closeControl = true;
+      const guided = guideDribbler(p, b, vx, vz);
+      vx = guided.x;
+      vz = guided.z;
+    }
     // Let walking turn naturally; near a touch, settle facing the incoming ball.
     const moving = Math.hypot(vx, vz) > 0.35;
     p.faceHeading = moving
@@ -728,8 +741,44 @@ export function updateAltinha(m, dt, input) {
     movePlayers(m, dt, input);
     if (s.phase === "ready") {
       const p = m.players[m.selected];
-      b.x = p.x + p.dx * 0.45;
-      b.z = p.z + p.dz * 0.45;
+      stepBallMotion(b, dt);
+      const moving = Math.hypot(input.x || 0, input.z || 0) > 0.1;
+      const distance = Math.hypot(b.x - p.x, b.z - p.z);
+      if (
+        !p.groundTouch &&
+        moving &&
+        distance < 0.9 &&
+        m.elapsed >= (p.nextGroundTouchAt || 0)
+      ) {
+        p.groundTouch = { at: m.elapsed };
+        p.altinhaPose = {
+          kind: "foot",
+          side: 1,
+          heading: p.locomotion.heading,
+          startedAt: m.elapsed,
+          until: m.elapsed + 0.35,
+        };
+      }
+      if (p.groundTouch && m.elapsed - p.groundTouch.at >= 0.12) {
+        if (distance < 0.95 && moving) {
+          const impulse = dribbleImpulse(p, b);
+          const sandScale = Math.sqrt(
+            rollingResistance(b, Math.hypot(impulse.vx, impulse.vz)) /
+              ROLL_DECELERATION,
+          );
+          impulse.vx *= sandScale;
+          impulse.vz *= sandScale;
+          b.vx = impulse.vx;
+          b.vz = impulse.vz;
+          p.lastDribble = { ...impulse, time: m.elapsed };
+          p.nextGroundTouchAt = m.elapsed + Math.max(0.32, impulse.interval);
+          p.altinhaPose.hitAt = m.elapsed;
+          p.altinhaPose.contact = { x: b.x, y: 0.08, z: b.z };
+        }
+        p.groundTouch = null;
+      }
+      if (p.altinhaPose && m.elapsed > p.altinhaPose.until)
+        p.altinhaPose = null;
     } else if (s.phase === "serving") {
       const a = s.pickup,
         p = m.players[m.selected],

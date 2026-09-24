@@ -167,15 +167,16 @@ test("passing transfers movement and actions to the receiver; first-time return 
   assert.equal(m.altinha.phase, "ready");
   m.physics.dispose();
 });
-test("free movement changes both axes and facing; a pass can target a chosen partner", () => {
+test("grounded carrying moves by short touches and follows changes of direction", () => {
   const m = game(),
     p = m.players[0],
     z = p.z;
   tick(m, 240, { x: 1, z: -1 });
-  assert.ok(p.x > 3 && p.z < z - 3);
+  assert.ok(p.x > 1 && p.z < z - 1);
+  assert.ok(p.lastDribble);
   assert.ok(Math.sin(p.locomotion.heading) > 0.4);
   tick(m, 240, { x: 0, z: 1 });
-  assert.ok(p.z > z - 1);
+  assert.ok(p.z > z - 1.3);
   assert.ok(Math.cos(p.locomotion.heading) > 0.8);
   m.physics.dispose();
 });
@@ -541,4 +542,26 @@ test("diving header follows a dropping ball instead of holding the original head
       assert.ok(m.ball.vy > 0);
       m.physics.dispose();
     }
+});
+
+test("ground ball rolls freely between touches and redirects only at the next contact", () => {
+  const m = game(),
+    p = m.players[0];
+  try {
+    for (let i = 0; i < 100 && !p.lastDribble; i++) m.update(1 / 120, { x: 1 });
+    assert.ok(p.lastDribble);
+    const first = p.lastDribble.time;
+    const vx = m.ball.vx;
+    m.update(1 / 120, { z: 1 });
+    assert.equal(p.lastDribble.time, first);
+    assert.ok(m.ball.vx > 0 && m.ball.vx < vx);
+    assert.ok(Math.abs(m.ball.vz) < 0.001);
+    for (let i = 0; i < 240 && p.lastDribble.time === first; i++)
+      m.update(1 / 120, { z: 1 });
+    assert.ok(p.lastDribble.time > first);
+    assert.ok(m.ball.vz > 0);
+    assert.ok(Math.abs(m.ball.vx) < 0.001);
+  } finally {
+    m.physics.dispose();
+  }
 });

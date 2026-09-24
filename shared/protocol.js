@@ -53,6 +53,7 @@ const playerFields = [
   "renderId",
   "altinhaPose",
   "volleyPending",
+  "walkRequested",
   "id",
   "team",
   "number",

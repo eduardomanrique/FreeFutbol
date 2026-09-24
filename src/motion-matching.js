@@ -177,7 +177,8 @@ export class MotionController {
     this.gait =
       speed < 0.18
         ? "idle"
-        : (p.closeControl && speed < 4.2) ||
+        : (p.walkRequested && speed < 4.2) ||
+            (p.closeControl && speed < 4.2) ||
             speed < (this.gait === "walk" ? 3.33 : 2.93)
           ? "walk"
           : speed < (this.gait === "sprint" ? 6.79 : 7.3)
@@ -214,7 +215,8 @@ export class MotionController {
       this.gait === "walk" ? 0.95 : this.gait === "sprint" ? 1.15 : 0.78;
     // Quicker steps at the same ground speed: shorten their reach by the
     // reciprocal factor; distance matching automatically increases cadence.
-    const cadence = this.gait === "walk" ? 1.05 : 1.38;
+    const cadence =
+      this.gait === "walk" ? (p.walkRequested ? 1.2 : 1.05) : 1.38;
     const strideTarget = nominal
       ? (clamp(speed / nominal, 0.32, 1.22) * gaitAmplitude) / cadence
       : 0.5;

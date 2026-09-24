@@ -31,7 +31,7 @@ try {
   assert.ok(state.footvolley);
   for (const [key, kind, label] of [
     ["KeyJ", "chest", "pass"],
-    ["KeyL", "inside", "set"],
+    ["KeyL", "head", "set"],
     ["Space", "head", "attack"],
   ]) {
     await page.evaluate(() => {

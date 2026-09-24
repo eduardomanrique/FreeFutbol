@@ -178,7 +178,7 @@ test("finesse charge advances 15 percent slower, including the long-shot band, a
   assert.ok(Math.abs(charges[1] / 0.85 - charges[0]) < 1e-8);
 });
 
-test("faster half-power low finesse reaches goal from outside the area and from distance", () => {
+test("low finesse stays grounded and can stop short from long distance", () => {
   for (const distance of [20, 24, 45]) {
     const { m, p } = solo("match");
     p.x = m.field.halfLength - distance;
@@ -191,6 +191,7 @@ test("faster half-power low finesse reaches goal from outside the area and from 
     for (let i = 0; i < 360 && !m.lastShot; i++) m.update(1 / 120, {});
     assert.ok(m.lastShot);
     assert.equal(m.lastShot.lift, 0);
+    assert.ok(m.lastShot.speed <= 24);
     let peak = m.ball.y;
     for (let i = 0; i < 720 && m.mode === "playing"; i++) {
       m.integrateBall(1 / 120);
@@ -198,10 +199,34 @@ test("faster half-power low finesse reaches goal from outside the area and from 
     }
     assert.equal(
       m.score[0],
-      1,
+      distance <= 24 ? 1 : 0,
       `${distance}m ${JSON.stringify(m.ball)}`,
     );
     assert.ok(peak < 0.17);
     m.physics.dispose();
   }
+});
+
+test("grounded finesse remains slower than a strong aligned shot", () => {
+  const speeds = [];
+  for (const [power, finesse] of [
+    [0.5, true],
+    [0.65, true],
+    [0.85, false],
+  ]) {
+    const { m, p } = solo();
+    try {
+      p.dx = 1;
+      p.dz = 0;
+      initLocomotion(p);
+      m.beginAction("shoot", { x: 1, finesse });
+      m.releaseAction(power, finesse);
+      for (let i = 0; i < 360 && !m.lastShot; i++) m.update(1 / 120, {});
+      assert.ok(m.lastShot);
+      speeds.push(m.lastShot.speed);
+    } finally {
+      m.physics.dispose();
+    }
+  }
+  assert.ok(speeds[2] > Math.max(speeds[0], speeds[1]) * 1.25);
 });

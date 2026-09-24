@@ -109,7 +109,7 @@ export function passTrajectory(
     }
     return { speed: (lo + hi) / 2, lift };
   }
-  const arrival = 2.6 + power * 6.5;
+  const arrival = 1.8 + power * 4.2;
   // Constant rolling resistance plus speed drag, integrate backward in distance.
   let speed = arrival;
   for (let x = 0; x < distance; x += 0.1) {
@@ -119,7 +119,8 @@ export function passTrajectory(
     );
   }
   // Allow for initial sliding-to-rolling loss in the rigid-body contact solver.
-  return { speed: speed * 1.12, lift: 0 };
+  // A long ground pass may stop short; do not turn it into a harder shot.
+  return { speed: Math.min(26, speed * 1.12), lift: 0 };
 }
 export function footBallDistance(foot, b, previous = foot) {
   const dx = foot.x - previous.x,

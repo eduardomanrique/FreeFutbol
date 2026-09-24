@@ -125,7 +125,10 @@ test("AI coordinates legal three-touch rallies and movements stay on own side", 
       assert.ok(m.footvolley.touches.every((n) => n <= 3));
     }
     assert.ok(touches > 9);
-    assert.deepEqual(m.score, [0, 0]);
+    assert.ok(
+      m.score[0] + m.score[1] <= 4,
+      "stronger attacks can now win rallies",
+    );
   } finally {
     m.physics.dispose();
   }
@@ -260,5 +263,308 @@ test("normal reach and high early balls do not trigger a dive", () => {
     } finally {
       m.physics.dispose();
     }
+  }
+});
+
+test("high attack jumps immediately, contacts with head or raised foot, and lands", async () => {
+  const { volleyJump } = await import("../src/volley-motion.js");
+  for (const [x, kind] of [
+    [-3, "head"],
+    [-1.3, "high-kick"],
+  ]) {
+    const m = setup();
+    try {
+      m.footvolley.phase = "rally";
+      m.selected = 0;
+      const p = m.players[0];
+      Object.assign(p, { x, z: 0, dx: 1, dz: 0 });
+      initLocomotion(p);
+      Object.assign(m.ball, {
+        x: x + (kind === "high-kick" ? 0.68 : 0),
+        z: 0,
+        y: 2.7,
+        vx: 0,
+        vz: 0,
+        vy: -1,
+      });
+      assert.ok(requestVolley(m, "shoot"));
+      const a = p.volleyPending;
+      assert.equal(a.kind, kind);
+      assert.ok(volleyJump(a, m.elapsed + 0.45) > 0.6);
+      for (let i = 0; i < 100 && !m.lastTouch; i++) m.update(1 / 120, {});
+      assert.equal(m.lastTouch?.kind, kind);
+      assert.ok(m.ball.y > 2);
+      assert.ok(m.ball.vx > 0);
+      assert.equal(volleyJump(a, a.jumpAt + 1), 0);
+    } finally {
+      m.physics.dispose();
+    }
+  }
+});
+
+test("receiving and setting keep the ball on own side, with a higher set", () => {
+  const heights = [];
+  for (const type of ["pass", "lob"]) {
+    const m = setup();
+    try {
+      m.footvolley.phase = "rally";
+      Object.assign(m.ball, { x: -4, z: 0, y: 1.5 });
+      volleyContact(m, m.players[0], action(type));
+      heights.push(m.ball.y + m.ball.vy ** 2 / 19.62);
+      assert.equal(m.footvolley.receiver, 1);
+    } finally {
+      m.physics.dispose();
+    }
+  }
+  assert.ok(heights[1] > heights[0] + 1);
+});
+
+test("only receive pursues a far ball or starts an emergency dive; set follows manual input", () => {
+  for (const type of ["pass", "lob"]) {
+    for (const [gap, y, vy] of [
+      [6.5, 6, 1],
+      [3.8, 2, -1],
+    ]) {
+      const m = setup();
+      try {
+        m.footvolley.phase = "rally";
+        m.footvolley.humans = [true, true, true, true];
+        m.selected = 0;
+        const p = m.players[0];
+        Object.assign(p, { x: -8, z: 0, dx: 1, dz: 0 });
+        initLocomotion(p);
+        Object.assign(m.ball, { x: p.x + gap, z: 0, y, vy, vx: 0, vz: 0 });
+        assert.ok(requestVolley(m, type, {}, 0));
+        assert.equal(!!p.volleyPending.dive, type === "pass" && y === 2);
+        for (let i = 0; i < 24; i++) m.update(1 / 120, {});
+        if (type === "pass")
+          assert.ok(p.x > -7.95, "A starts a real approach beyond six metres");
+        else {
+          assert.ok(
+            Math.abs(p.x + 8) < 0.001,
+            "B never starts an automatic approach",
+          );
+          m.volleyInputs = { 0: { z: 1 } };
+          for (let i = 0; i < 20; i++) m.update(1 / 120, {});
+          assert.ok(
+            p.z > 0.05,
+            "manual movement remains available while setting",
+          );
+        }
+      } finally {
+        m.physics.dispose();
+      }
+    }
+  }
+});
+
+test("ordinary reception is short and low even when teammate is far away", () => {
+  const m = setup();
+  try {
+    m.footvolley.phase = "rally";
+    m.players[1].x = -1;
+    m.players[1].z = 0;
+    Object.assign(m.ball, { x: -8, z: 0, y: 1.5 });
+    volleyContact(m, m.players[0], action("pass"));
+    const apex = m.ball.y + m.ball.vy ** 2 / 19.62;
+    const flight =
+      (m.ball.vy + Math.sqrt(m.ball.vy ** 2 + 19.62 * (m.ball.y - 0.11))) /
+      9.81;
+    assert.ok(apex < 2.1);
+    assert.ok(Math.hypot(m.ball.vx, m.ball.vz) * flight < 2.8);
+  } finally {
+    m.physics.dispose();
+  }
+});
+
+test("near-net overhead balls prefer headers; awkward high kick falls and recovers", () => {
+  for (const gap of [0, 0.25, 0.68]) {
+    const m = setup();
+    try {
+      m.footvolley.phase = "rally";
+      m.footvolley.humans = [true, true, true, true];
+      m.selected = 0;
+      const p = m.players[0];
+      Object.assign(p, { x: -1.3, z: 0, dx: 1, dz: 0 });
+      initLocomotion(p);
+      Object.assign(m.ball, {
+        x: p.x + gap,
+        z: 0,
+        y: 2.7,
+        vy: -1,
+        vx: 0,
+        vz: 0,
+      });
+      requestVolley(m, "shoot", {}, 0);
+      assert.equal(p.volleyPending.kind, gap > 0.55 ? "high-kick" : "head");
+      if (gap > 0.55) {
+        for (let i = 0; i < 110; i++) m.update(1 / 120, {});
+        assert.ok(p.altinhaPose.acrobatic);
+        assert.equal(requestVolley(m, "lob", {}, 0), false);
+        const x = p.x;
+        m.volleyInputs = { 0: { x: -1 } };
+        for (let i = 0; i < 20; i++) m.update(1 / 120, {});
+        assert.equal(p.x, x);
+        for (let i = 0; i < 100; i++) m.update(1 / 120, {});
+        assert.equal(p.altinhaPose, null);
+      }
+    } finally {
+      m.physics.dispose();
+    }
+  }
+});
+
+test("powered header and foot attack can aim to either corner across the net for both teams", async () => {
+  const { stepBallMotion } = await import("../src/ball-physics.js");
+  for (const team of [0, 1])
+    for (const z of [-1, 1])
+      for (const kind of ["head", "high-kick"]) {
+        const m = setup();
+        try {
+          m.footvolley.phase = "rally";
+          const p = m.players[team * 2];
+          const x = team === 0 ? -1.3 : 1.3;
+          Object.assign(p, { x, z: 0 });
+          Object.assign(m.ball, { x, z: 0, y: 2.5 });
+          volleyContact(m, p, {
+            ...action("shoot"),
+            kind,
+            input: { x: team === 0 ? 1 : -1, z },
+            jumpAt: m.elapsed,
+            setAttack: true,
+          });
+          assert.equal(m.lastShot.powered, true);
+          assert.ok(m.lastShot.speed > 9);
+          assert.ok(m.ball.vz * z > 0);
+          const ball = { ...m.ball };
+          let crossed = false;
+          for (let i = 0; i < 300 && ball.y > 0.111; i++) {
+            const before = { ...ball };
+            stepBallMotion(ball, 1 / 240);
+            if (before.x * ball.x <= 0) {
+              assert.ok(ball.y > 2.31);
+              crossed = true;
+            }
+          }
+          assert.ok(crossed);
+          assert.ok(ball.x * x < 0);
+          assert.ok(Math.abs(ball.x) < 9 && Math.abs(ball.z) < 4.5);
+        } finally {
+          m.physics.dispose();
+        }
+      }
+});
+
+test("a soft reception can be set by a stationary partner even when B is queued early", () => {
+  const m = setup();
+  try {
+    m.footvolley.phase = "rally";
+    m.footvolley.humans = [true, true, true, true];
+    const p = m.players[0],
+      q = m.players[1];
+    Object.assign(p, { x: -5, z: 0, dx: 1, dz: 0 });
+    Object.assign(q, { x: -3.2, z: 0, dx: -1, dz: 0 });
+    initLocomotion(p);
+    initLocomotion(q);
+    Object.assign(m.ball, { x: -5, z: 0, y: 1.5, vx: 0, vy: 0, vz: 0 });
+    volleyContact(m, p, action("pass"));
+    assert.ok(Math.hypot(m.ball.vx, m.ball.vz) <= 2.6);
+    assert.ok(m.ball.y + m.ball.vy ** 2 / 19.62 <= 1.8);
+    assert.ok(requestVolley(m, "lob", {}, 1));
+    for (let i = 0; i < 160 && m.lastTouch.player !== 1; i++)
+      m.update(1 / 120, {});
+    assert.equal(m.lastTouch.player, 1);
+    assert.ok(["chest", "thigh", "inside"].includes(m.lastTouch.kind));
+    assert.ok(m.ball.y + m.ball.vy ** 2 / 19.62 > 5);
+    assert.ok(Math.abs(q.x + 3.2) < 0.01, "B did not move the receiver");
+  } finally {
+    m.physics.dispose();
+  }
+});
+
+test("stationary partners face one another during their own exchange", () => {
+  const m = setup();
+  try {
+    m.footvolley.phase = "rally";
+    m.footvolley.lastTeam = 0;
+    m.footvolley.humans = [true, true, true, true];
+    const p = m.players[0],
+      q = m.players[1];
+    Object.assign(p, { x: -5, z: -1, dx: 1, dz: 0 });
+    Object.assign(q, { x: -5, z: 1, dx: 1, dz: 0 });
+    initLocomotion(p);
+    initLocomotion(q);
+    Object.assign(m.ball, { x: -5, z: 0, y: 5, vy: 0, vx: 0, vz: 0 });
+    for (let i = 0; i < 65; i++) m.update(1 / 120, {});
+    assert.ok(p.dz > 0.9 && q.dz < -0.9);
+  } finally {
+    m.physics.dispose();
+  }
+});
+
+test("set chooses foot, knee, chest or head according to ball height", () => {
+  for (const [y, kind] of [
+    [0.65, "inside"],
+    [1.05, "thigh"],
+    [1.65, "chest"],
+    [2.6, "head"],
+  ]) {
+    const m = setup();
+    try {
+      m.footvolley.phase = "rally";
+      m.ball.y = y;
+      requestVolley(m, "lob");
+      assert.equal(m.players[m.selected].volleyPending.kind, kind);
+    } finally {
+      m.physics.dispose();
+    }
+  }
+});
+
+test("jump loads the knees on the ground, takes off, and absorbs the landing", async () => {
+  const { volleyJumpPose, VOLLEY_PREPARE, VOLLEY_LANDING } =
+    await import("../src/volley-motion.js");
+  const a = { jumpAt: 2 };
+  const load = volleyJumpPose(a, 2.1);
+  assert.equal(load.phase, "prepare");
+  assert.equal(load.height, 0);
+  assert.ok(load.crouch > 0.18 && load.lean > 0.2);
+  assert.ok(Math.abs(volleyJumpPose(a, 2 + VOLLEY_PREPARE).height) < 1e-10);
+  assert.ok(volleyJumpPose(a, 2.5).height > 0.65);
+  const landing = volleyJumpPose(a, 2 + VOLLEY_LANDING + 0.06);
+  assert.equal(landing.height, 0);
+  assert.ok(landing.crouch > 0.13);
+  assert.equal(volleyJumpPose(a, 2 + VOLLEY_LANDING + 0.3).crouch, 0);
+});
+
+test("controlled A owns reception while a closer AI partner opens a passing lane", () => {
+  const m = setup();
+  try {
+    m.footvolley.phase = "rally";
+    m.selected = 0;
+    const p = m.players[0],
+      q = m.players[1];
+    Object.assign(p, { x: -6, z: 0, dx: 1, dz: 0 });
+    Object.assign(q, { x: -4.6, z: 0.2, dx: 1, dz: 0 });
+    initLocomotion(p);
+    initLocomotion(q);
+    Object.assign(m.ball, { x: -4.5, z: 0, y: 4.3, vy: 0, vx: 0, vz: 0 });
+    // AI had already prepared its own touch before the human requested A.
+    assert.ok(requestVolley(m, "pass", {}, 1));
+    assert.ok(requestVolley(m, "pass", {}, 0));
+    assert.equal(q.volleyPending, null);
+    let minGap = Infinity;
+    for (let i = 0; i < 65 && !m.lastTouch; i++) {
+      m.update(1 / 120, {});
+      assert.equal(m.footvolley.receiver, 0);
+      assert.equal(q.volleyPending, null);
+      minGap = Math.min(minGap, Math.hypot(p.x - q.x, p.z - q.z));
+    }
+    assert.ok(q.z > 0.65, "partner opens a lateral receiving lane");
+    assert.ok(minGap > 1, "partner stays outside the controlled receiver");
+    assert.equal(q.volleySupport.receiver, 0);
+    assert.ok(Math.abs(q.volleySupport.z) > 1.5);
+  } finally {
+    m.physics.dispose();
   }
 });

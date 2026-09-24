@@ -116,7 +116,11 @@ const touch = new TouchInput($("touch-controls"), {
   rotated: () => document.body.classList.contains("landscape-fallback"),
   press(action) {
     if (match.field.footvolley) {
-      volleyAction(action.replace("volley-", ""));
+      volleyAction(
+        action === "volley-shoot"
+          ? "shoot-start"
+          : action.replace("volley-", ""),
+      );
       return;
     }
     if (match.field.altinha) {
@@ -146,6 +150,10 @@ const touch = new TouchInput($("touch-controls"), {
     }
   },
   release(action) {
+    if (match.field.footvolley && action === "volley-shoot") {
+      volleyAction("shoot-release");
+      return;
+    }
     if (match.field.altinha && action === "pass") {
       match.altinhaAction("pass-release", readInput());
       return;
@@ -153,6 +161,7 @@ const touch = new TouchInput($("touch-controls"), {
     if (shotSource === "touch" && actionButton === action) releaseShot();
   },
   cancel(action) {
+    if (match.field.footvolley) volleyAction("shoot-cancel");
     if (match.field.altinha) match.altinhaAction("pass-cancel");
     if (shotSource === "touch" && (!action || action === actionButton)) {
       gameAction("cancelAction");
@@ -268,6 +277,7 @@ function beep(freq = 600, duration = 0.15) {
   osc.stop(audio.currentTime + duration);
 }
 function setPlaying(on) {
+  volleyAttackHeld = false;
   $("home").hidden = on;
   $("hud").hidden = !on;
   document.body.classList.toggle("playing", on);
@@ -279,7 +289,21 @@ function setPlaying(on) {
       document.exitFullscreen?.().catch(() => {});
   }
 }
+let volleyAttackHeld = false;
 function volleyAction(type) {
+  if (type === "shoot-start") {
+    volleyAttackHeld = true;
+    return;
+  }
+  if (type === "shoot-cancel") {
+    volleyAttackHeld = false;
+    return;
+  }
+  if (type === "shoot-release") {
+    if (!volleyAttackHeld) return;
+    volleyAttackHeld = false;
+    type = "shoot";
+  }
   if (online.active)
     return online.action(
       type === "switch" ? "switch" : "begin",
@@ -379,6 +403,7 @@ function showModal(type) {
   }
   keys.clear();
   gameAction("cancelAction");
+  volleyAttackHeld = false;
   shotSource = null;
   shotReleaseDelay = null;
   controller.suspend();
@@ -401,7 +426,7 @@ function showModal(type) {
         ["Trocar jogador", "LB / Q"],
         ["Desarmar / carrinho", "X no teclado · X / B no controle"],
         ["Passe em profundidade", "Y / I"],
-        ["Proteger / marcar", "LT"],
+        ["Andar / proteger · segurar ao mover", "LT"],
         ["Chute colocado · segurar RB ao soltar X", "RB + X"],
         ["Cavadinha · segurar LB durante o chute", "LB + X / Q + ESPAÇO"],
         ["Pressão do segundo defensor · segurar", "RB / E"],
@@ -418,11 +443,11 @@ function showModal(type) {
   }
   if (type === "controls" && mobile) {
     body =
-      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Com posse, use Passe, Alto e Chute; mantenha Proteger pressionado para proteger a bola. Segure os botões de passe ou chute para carregar e solte para executar; use o analógico para mirar. Em cruzamentos, pressione Chute antes da chegada para cabecear; de costas para o gol e com espaço, uma bola adequada pode virar bicicleta. Passe escora. Riscos azuis indicam velocidade máxima. Cavadinha faz um chute por cobertura. Sem posse, segure Pressão para chamar o segundo defensor (marcado em azul); Trocar e Carrinho continuam disponíveis. No gol a gol, Mãos tenta segurar a bola: fora da área é pênalti. Durante um passe, os botões continuam no modo do time que tocou por último. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
+      '<p class="modal-note">Arraste o analógico à esquerda para mover; a distância do centro controla a velocidade. Puxe até a borda para correr; recue o dedo para reduzir a velocidade. Com posse, use Passe, Alto e Chute; mantenha Proteger pressionado para andar e proteger a bola. Solte para voltar ao movimento normal; use a borda do analógico para correr. Segure os botões de passe ou chute para carregar e solte para executar; use o analógico para mirar. Em cruzamentos, pressione Chute antes da chegada para cabecear; de costas para o gol e com espaço, uma bola adequada pode virar bicicleta. Passe escora. Riscos azuis indicam velocidade máxima. Cavadinha faz um chute por cobertura. Sem posse, segure Pressão para chamar o segundo defensor (marcado em azul); Trocar e Carrinho continuam disponíveis. No gol a gol, Mãos tenta segurar a bola: fora da área é pênalti. Durante um passe, os botões continuam no modo do time que tocou por último. Use Ⅱ para abrir o menu.</p><p class="modal-note">A partida permanece horizontal e solicita tela cheia. Se o navegador bloquear, tente Tela cheia no menu; no iPhone, abra pelo ícone após adicionar o jogo à Tela de Início para ocultar as barras.</p>';
   }
   if (type === "controls" && match.field.footvolley)
     body =
-      '<p class="modal-note">Futevôlei 2 × 2: até três toques, sem repetir o mesmo jogador. J / A: passe. L / B: levantamento. Espaço / X: ataque e saque. Q / LB: trocar atleta no Solo. No celular, use Passe, Alto e Ataque. Mova-se até a bola; ao pedir o toque, o atleta ajusta a aproximação curta. Online, cada pessoa controla seu próprio atleta. Vence quem chegar a 15 com dois pontos de vantagem.</p>';
+      '<p class="modal-note">Futevôlei 2 × 2: até três toques, sem repetir o mesmo jogador. J / A: receber. L / B: levantamento. Espaço / X: pressione e solte para atacar ou sacar. Bola alta: salto; perto da rede: chute alto para atacar ou bloquear. Q / LB: trocar atleta no Solo. No celular, use Receber, Levantar e Ataque. A busca a bola automaticamente e pode tentar um mergulho. B exige posicionamento manual e levanta alto. Mire com o direcional ao soltar X: cabeçadas são prioritárias; chutes acrobáticos terminam em queda e recuperação. Ataques no alto saem mais fortes. Online, cada pessoa controla seu próprio atleta. Vence quem chegar a 15 com dois pontos de vantagem.</p>';
   if (type === "settings") {
     $("modal-title").textContent = "Do seu jeito";
     body = `<label class="setting">Qualidade gráfica<select id="quality"><option value="high">Alta</option><option value="medium">Equilibrada</option><option value="low">Desempenho</option></select></label><button id="calibrate-controller" class="secondary">Configurar botões do controle</button><p class="modal-note">Esquema alternativo: X chuta, B cruza, Y lança; RT corre e LT protege. Use a configuração guiada se os gatilhos ou botões estiverem trocados.</p><label class="setting">Câmera<select id="camera"><option value="broadcast">Transmissão</option><option value="tactical">Tática</option></select></label><p class="modal-note">O modo Desempenho reduz a resolução e desativa sombras. A simulação mantém a mesma precisão em todas as qualidades.</p>`;
@@ -602,7 +627,7 @@ window.addEventListener("keydown", (e) => {
     const action = {
       KeyJ: "pass",
       KeyL: "lob",
-      Space: "shoot",
+      Space: "shoot-start",
       KeyQ: "switch",
     }[e.code];
     if (action) volleyAction(action);
@@ -636,6 +661,8 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.code);
+  if (match.field.footvolley && e.code === "Space")
+    volleyAction("shoot-release");
   if (match.field.altinha && e.code === "KeyK")
     match.altinhaAction("pass-release", readInput());
   if (e.code === actionButton && shotSource === "keyboard") {
@@ -740,7 +767,7 @@ function updateHUD() {
             ? "LEVANTE"
             : "RECEPÇÃO";
     document.querySelector(".quick-controls").innerHTML =
-      "<span><kbd>J / A</kbd> Passe</span><span><kbd>L / B</kbd> Alto</span><span><kbd>ESPAÇO / X</kbd> Ataque / saque</span><span><kbd>Q / LB</kbd> Trocar</span>";
+      "<span><kbd>J / A</kbd> Receber</span><span><kbd>L / B</kbd> Levantar</span><span><kbd>ESPAÇO / X</kbd> Soltar: ataque / saque</span><span><kbd>Q / LB</kbd> Trocar</span>";
     document.querySelector('[data-touch="volley-switch"]').hidden =
       online.active;
     touch.variant = "futevolei";
@@ -994,7 +1021,7 @@ function pollController(now) {
     hints.innerHTML =
       kind === "keyboard"
         ? keyboardHints
-        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Proteger</span><span><kbd>LB + X</kbd> Cavadinha</span><span><kbd>RB</kbd> 2º defensor</span><span><kbd>Y</kbd> Mãos (gol a gol)</span>";
+        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Andar / proteger</span><span><kbd>LB + X</kbd> Cavadinha</span><span><kbd>RB</kbd> 2º defensor</span><span><kbd>Y</kbd> Mãos (gol a gol)</span>";
   }
   if (
     state.disconnected &&
@@ -1073,7 +1100,8 @@ function pollController(now) {
   if (match.mode !== "playing") return;
   if (match.field.footvolley) {
     for (const key of ["pass", "lob", "shoot", "switch"])
-      if (pressed[key]) volleyAction(key);
+      if (pressed[key]) volleyAction(key === "shoot" ? "shoot-start" : key);
+    if (state.released.shoot) volleyAction("shoot-release");
     return;
   }
   if (match.field.altinha) {

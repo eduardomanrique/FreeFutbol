@@ -802,7 +802,7 @@ export class Match {
       if (a.finesse && !a.chip && band === "normal") speed *= 1.4;
       if (band === "mishit") speed = 43 + 70 * (a.power - 0.9);
       const lowFinesse = a.finesse && !a.chip && a.power <= 0.65;
-      if (lowFinesse) speed *= 1.5;
+      if (lowFinesse) speed = Math.min(speed, 24 * (facing.speedScale / 0.6));
       const flight = Math.max(0.15, d / speed);
       let lift = clamp(
         (0.65 + a.power * 0.7 - 0.11) / flight + 0.5 * 9.81 * flight,
@@ -1681,6 +1681,7 @@ export class Match {
       }
       if (!sprintRequested) p.sprintFirstTouch = false;
       p.sprintRequested = sprintRequested;
+      p.walkRequested = this.isControlled(p) && !!movement.jockey;
       p.sprintLaunchTime = sprintRequested
         ? Math.max(0, (p.sprintLaunchTime || 0) - dt)
         : 0;
@@ -2339,6 +2340,7 @@ export class Match {
       mode: this.mode,
       altinha: this.altinha ?? null,
       footvolley: this.footvolley ?? null,
+      volleyPose: this.players[this.selected]?.altinhaPose ?? null,
       physics: this.physics.snapshot(),
       animation: this.players[this.selected]?.motion?.snapshot() ?? null,
       coordinates:

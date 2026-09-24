@@ -1,6 +1,13 @@
 import { predictLanding } from "./ball-landing.js";
 import { stepBallMotion } from "./ball-physics.js";
 import { initLocomotion, stepLocomotion } from "./locomotion.js";
+import {
+  volleyJump,
+  volleyJumpPose,
+  VOLLEY_PREPARE,
+  VOLLEY_LANDING,
+  volleyFootSurface,
+} from "./volley-motion.js";
 import { bodySurface } from "./altinha-contact.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const side = (t) => (t === 0 ? -1 : 1);
@@ -13,6 +20,7 @@ export function initFootvolley(m) {
     touches: [0, 0],
     lastPlayer: null,
     lastTeam: null,
+    lastType: null,
     serial: 0,
     rally: 0,
     targetScore: 15,
@@ -30,6 +38,7 @@ function resetRally(m) {
     touches: [0, 0],
     lastPlayer: null,
     lastTeam: null,
+    lastType: null,
     timer: 0,
     reason: "",
     landing: null,
@@ -87,7 +96,14 @@ export function volleyPoint(m, winner, reason) {
   f.serial++;
   m.players.forEach((p) => {
     p.volleyPending = null;
-    p.altinhaPose = null;
+    if (p.altinhaPose?.jumpAt != null) {
+      p.altinhaPose.until =
+        p.altinhaPose.jumpAt +
+        (p.altinhaPose.acrobatic
+          ? 1.65 + VOLLEY_PREPARE
+          : VOLLEY_LANDING + 0.28);
+      if (p.altinhaPose.hitAt == null) p.altinhaPose.landedAt = m.elapsed;
+    } else p.altinhaPose = null;
     p.vx = p.vz = 0;
   });
   m.announce(`${reason} · PONTO ${winner === 0 ? "ATLÉTICO" : "UNIÃO"}`, 2.2);
@@ -113,32 +129,67 @@ export function requestVolley(m, type, input = {}, id = m.selected) {
   if (f.phase === "serve" && id !== f.server) return false;
   if (
     p.altinhaPose?.dive ||
+    p.altinhaPose?.acrobatic ||
+    (p.altinhaPose?.jumpAt != null && m.elapsed < p.altinhaPose.until) ||
     p.volleyPending ||
     m.elapsed - (p.volleyContactAt ?? -10) < 0.4
   )
     return false;
+  const human = f.humans ? f.humans[id] : id === m.selected && p.team === 0;
+  if (type === "pass" && human) {
+    const mate = m.players[id ^ 1];
+    const mateHuman = f.humans
+      ? f.humans[mate.id]
+      : mate.id === m.selected && mate.team === 0;
+    if (!mateHuman && mate.volleyPending) {
+      mate.volleyPending = null;
+      if (mate.altinhaPose?.dive || mate.altinhaPose?.jumpAt != null) {
+        mate.altinhaPose.landedAt = m.elapsed;
+        mate.altinhaPose.until = Math.max(
+          m.elapsed + 0.8,
+          (mate.altinhaPose.jumpAt ?? m.elapsed) + VOLLEY_LANDING + 0.28,
+        );
+      } else mate.altinhaPose = null;
+    }
+  }
   const b = m.ball;
+  const forwardGap = (b.x - p.x) * p.dx + (b.z - p.z) * p.dz;
+  const awkward = Math.abs(p.x) < 2.4 && forwardGap > 0.55;
   const kind =
-    f.phase === "serve" || type === "lob"
+    f.phase === "serve"
       ? "inside"
       : type === "shoot" && b.y > 1.65
-        ? "head"
-        : b.y > 1.15
-          ? "chest"
-          : "inside";
+        ? awkward
+          ? "high-kick"
+          : "head"
+        : type === "lob" && b.y > 2.15
+          ? "head"
+          : b.y > 1.3
+            ? "chest"
+            : type === "lob" && b.y > 0.75
+              ? "thigh"
+              : "inside";
   p.volleyPending = {
     type,
     kind,
     side: 1,
+    acrobatic: kind === "high-kick",
+    setAttack: f.lastType === "lob" && f.lastTeam === p.team,
+    block: kind === "high-kick" && f.lastTeam != null && f.lastTeam !== p.team,
     startedAt: m.elapsed,
-    until: m.elapsed + 2,
+    until: m.elapsed + Math.max(2, Math.min(3.5, forecast(b, 0.6).t + 0.5)),
     heading: p.locomotion.heading,
     input: { x: input.x || 0, z: input.z || 0 },
     crouch: 0,
+    jumpAt:
+      type === "shoot" && f.phase === "rally" && b.y > 1.65 ? m.elapsed : null,
   };
+  if (p.volleyPending.jumpAt != null)
+    p.volleyPending.until = m.elapsed + VOLLEY_LANDING;
   const lowTarget = forecast(b, 0.65);
   const normalReach = 0.9 + 5.5 * lowTarget.t;
   if (
+    type === "pass" &&
     f.phase === "rally" &&
     b.vy < 0 &&
     dist(p, b) > 3.2 &&
@@ -151,6 +202,7 @@ export function requestVolley(m, type, input = {}, id = m.selected) {
     const d = Math.hypot(dx, dz) || 1;
     Object.assign(p.volleyPending, {
       kind: "inside",
+      jumpAt: null,
       until: m.elapsed + 0.72,
       heading: Math.atan2(dx, dz),
       dive: {
@@ -177,6 +229,23 @@ function launch(m, tx, tz, apex) {
     owner: null,
   });
 }
+// Fast airborne attack, with just enough arc to clear the net on either side.
+function attackLaunch(m, tx, tz, pace) {
+  const b = m.ball;
+  const d = Math.hypot(tx - b.x, tz - b.z);
+  const u = clamp(-b.x / (tx - b.x), 0.02, 0.98);
+  const netFlight = Math.sqrt(
+    Math.max(0, (2.55 - b.y * (1 - u) - 0.11 * u) / (4.905 * u * (1 - u))),
+  );
+  const flight = Math.max(0.5, d / pace, netFlight);
+  Object.assign(b, {
+    vx: ((tx - b.x) / flight) * 1.025,
+    vz: ((tz - b.z) / flight) * 1.025,
+    vy: (0.11 - b.y) / flight + 4.905 * flight,
+    spin: 0,
+    owner: null,
+  });
+}
 export function volleyContact(m, p, a) {
   const f = m.footvolley;
   if (!["rally", "serve"].includes(f.phase)) return false;
@@ -190,11 +259,16 @@ export function volleyContact(m, p, a) {
   f.touches[p.team]++;
   f.lastPlayer = p.id;
   f.lastTeam = p.team;
+  f.lastType = a.type;
   f.serial++;
   f.phase = "rally";
   p.volleyContactAt = m.elapsed;
   a.hitAt = m.elapsed;
-  a.until = m.elapsed + (a.dive ? 1 : 0.55);
+  a.until = a.acrobatic
+    ? a.jumpAt + 1.65 + VOLLEY_PREPARE
+    : a.jumpAt != null
+      ? a.jumpAt + VOLLEY_LANDING + 0.28
+      : m.elapsed + (a.dive ? 1 : 0.55);
   p.altinhaPose = { ...a };
   p.volleyPending = null;
   m.ball.lastTeam = p.team;
@@ -216,11 +290,35 @@ export function volleyContact(m, p, a) {
       aim = a.input || {};
     const tx = forward * clamp(5.2 + aim.x * forward * 2, 2.3, 7.4);
     const tz = clamp((aim.z || 0) * 3.2 + (m.random() - 0.5) * 0.55, -3.5, 3.5);
-    launch(m, tx, tz, a.serve ? 5.1 : Math.max(4.1, m.ball.y + 1.6));
+    const powered = a.jumpAt != null && m.elapsed - a.jumpAt < VOLLEY_LANDING;
+    if (powered) attackLaunch(m, tx, tz, a.setAttack ? 13 : 11);
+    else launch(m, tx, tz, a.serve ? 5.1 : Math.max(4.1, m.ball.y + 1.6));
     f.receiver = closestReceiver(m, 1 - p.team, { x: tx, z: tz }).id;
-    m.lastShot = { power: a.serve ? 0.55 : 0.75, contactAt: m.elapsed };
+    m.lastShot = {
+      power: powered ? 1 : a.serve ? 0.55 : 0.75,
+      powered,
+      target: { x: tx, z: tz },
+      speed: Math.hypot(m.ball.vx, m.ball.vz),
+      contactAt: m.elapsed,
+    };
   } else {
-    launch(m, mate.x, mate.z, a.type === "lob" ? 5.4 : 4.3);
+    if (a.type === "lob") launch(m, mate.x, mate.z, 5.4);
+    else {
+      const b = m.ball;
+      const d = dist(mate, b) || 1;
+      const apex = Math.max(1.75, b.y + 0.18);
+      const vy = Math.sqrt(19.62 * (apex - b.y));
+      // Arrive at a playable height, not at the sand beneath the partner.
+      const flight = (vy + Math.sqrt(vy * vy + 19.62 * (b.y - 0.8))) / 9.81;
+      const travel = Math.min(d, 2.2, 2.6 * flight);
+      Object.assign(b, {
+        vx: (((mate.x - b.x) / d) * travel) / flight,
+        vz: (((mate.z - b.z) / d) * travel) / flight,
+        vy,
+        spin: 0,
+        owner: null,
+      });
+    }
     f.receiver = mate.id;
     if (!f.humans && p.team === 0) m.selected = mate.id;
   }
@@ -236,10 +334,12 @@ export function volleyContact(m, p, a) {
       : a.serve
         ? "SAQUE"
         : a.type === "shoot"
-          ? "ATAQUE"
+          ? a.block
+            ? "BLOQUEIO"
+            : "ATAQUE"
           : a.type === "lob"
             ? "LEVANTAMENTO"
-            : "PASSE",
+            : "RECEPÇÃO",
     0.7,
   );
   return true;
@@ -266,6 +366,11 @@ export function updateFootvolley(m, dt, input = {}) {
     b = m.ball;
   m.elapsed += dt;
   if (f.phase === "point") {
+    for (const p of m.players) {
+      if (p.altinhaPose && m.elapsed > p.altinhaPose.until)
+        p.altinhaPose = null;
+      p.motion?.update(p, m, dt);
+    }
     f.timer -= dt;
     if (f.timer <= 0) resetRally(m);
     return;
@@ -279,7 +384,13 @@ export function updateFootvolley(m, dt, input = {}) {
   }
   const prediction = forecast(b);
   const receiving = prediction.x < 0 ? 0 : 1;
-  const receiver = closestReceiver(m, receiving, prediction);
+  const claimed = m.players.find(
+    (p) =>
+      p.team === receiving &&
+      p.volleyPending?.type === "pass" &&
+      (f.humans ? f.humans[p.id] : p.id === m.selected && p.team === 0),
+  );
+  const receiver = claimed || closestReceiver(m, receiving, prediction);
   if (f.phase === "rally") {
     f.receiver = receiver.id;
     if (!f.humans && f.landing?.x < 0) {
@@ -307,12 +418,26 @@ export function updateFootvolley(m, dt, input = {}) {
     const command = f.humans ? m.volleyInputs?.[p.id] || {} : input;
     let vx = 0,
       vz = 0;
-    const a = p.volleyPending;
+    let a = p.volleyPending;
+    // A queued set may use a lower body part if the ball has already passed
+    // the original contact height. It never pulls the athlete toward the ball.
+    if (a?.type === "lob" && !a.serve) {
+      if (a.kind === "head" && b.y < 1.55) a.kind = "chest";
+      if (a.kind === "chest" && b.y < 1.2) a.kind = "thigh";
+      if (a.kind === "thigh" && b.y < 0.72) a.kind = "inside";
+    }
     if (a && m.elapsed > a.until) {
       p.volleyPending = null;
-      p.altinhaPose = a.dive
-        ? { ...a, landedAt: m.elapsed, until: m.elapsed + 0.7 }
-        : null;
+      p.altinhaPose =
+        a.dive || a.jumpAt != null
+          ? {
+              ...a,
+              landedAt: m.elapsed,
+              until:
+                m.elapsed + (a.acrobatic ? 0.9 : a.jumpAt != null ? 0.28 : 0.7),
+            }
+          : null;
+      a = null;
     }
     if (
       (p.altinhaPose?.hitAt != null || p.altinhaPose?.landedAt != null) &&
@@ -320,20 +445,35 @@ export function updateFootvolley(m, dt, input = {}) {
     )
       p.altinhaPose = null;
     if (human) {
-      vx = (command.x || 0) * 5.6;
-      vz = (command.z || 0) * 5.6;
+      const speed = command.jockey ? 3.1 : command.sprint ? 7 : 5.6;
+      const magnitude = Math.max(1, Math.hypot(command.x || 0, command.z || 0));
+      vx = ((command.x || 0) / magnitude) * speed;
+      vz = ((command.z || 0) / magnitude) * speed;
     }
     const pursuing = f.phase === "rally" && (p.id === receiver.id || !!a);
-    if (pursuing && (!human || a)) {
-      const reach = human ? dist(p, b) < 6 : true;
-      if (reach) {
+    if (
+      pursuing &&
+      (!human ||
+        a?.type === "pass" ||
+        (a?.type === "shoot" && dist(p, b) < 1.4))
+    ) {
+      {
         const contact = a
           ? forecast(
               b,
-              a.kind === "head" ? 1.8 : a.kind === "chest" ? 1.45 : 0.6,
+              a.jumpAt != null
+                ? 2.3
+                : a.kind === "head"
+                  ? 1.8
+                  : a.kind === "chest"
+                    ? 1.45
+                    : a.kind === "thigh"
+                      ? 0.92
+                      : 0.6,
             )
           : prediction;
-        const offset = a?.kind === "inside" ? 0.35 : 0;
+        const offset =
+          a?.kind === "high-kick" ? 0.38 : a?.kind === "inside" ? 0.35 : 0;
         const tx = clamp(
           contact.x - p.dx * offset,
           p.team === 0 ? -9.8 : 0.4,
@@ -347,10 +487,38 @@ export function updateFootvolley(m, dt, input = {}) {
         vz = d ? ((tz - p.z) / d) * Math.min(max, d * 6) : 0;
       }
     } else if (!human && f.phase === "rally") {
-      const tx = side(p.team) * (f.lastTeam === p.team ? 2.3 : 5.5),
+      let tx = side(p.team) * (f.lastTeam === p.team ? 2.3 : 5.5),
         tz = p.id % 2 ? 2.2 : -2.2;
+      if (
+        receiving === p.team &&
+        receiver.id !== p.id &&
+        f.lastTeam !== p.team
+      ) {
+        // Stand beside the receiver's contact point, outside the incoming lane.
+        let lane = p.z >= prediction.z ? 1 : -1;
+        if (Math.abs(prediction.z + lane * 1.75) > 4) lane *= -1;
+        tx = clamp(
+          prediction.x - side(p.team) * 0.65,
+          p.team === 0 ? -8.5 : 0.6,
+          p.team === 0 ? -0.6 : 8.5,
+        );
+        tz = clamp(prediction.z + lane * 1.75, -4, 4);
+        p.volleySupport = { x: tx, z: tz, receiver: receiver.id };
+      }
       vx = clamp((tx - p.x) * 2, -3, 3);
       vz = clamp((tz - p.z) * 2, -3, 3);
+      if (receiving === p.team && receiver.id !== p.id) {
+        const dx = p.x - receiver.x,
+          dz = p.z - receiver.z;
+        const gap = Math.hypot(dx, dz);
+        if (gap < 1.4) {
+          const nx = gap > 0.01 ? dx / gap : 0;
+          const nz = gap > 0.01 ? dz / gap : p.id % 2 ? 1 : -1;
+          const inward = Math.min(0, vx * nx + vz * nz);
+          vx += nx * ((1.4 - gap) * 4 - inward);
+          vz += nz * ((1.4 - gap) * 4 - inward);
+        }
+      }
     }
     const divePose = p.altinhaPose;
     if (divePose?.dive) {
@@ -371,15 +539,43 @@ export function updateFootvolley(m, dt, input = {}) {
       p.vx = vx;
       p.vz = vz;
     }
+    if (
+      divePose?.jumpAt != null &&
+      (m.elapsed < divePose.jumpAt + VOLLEY_PREPARE ||
+        (divePose.acrobatic &&
+          m.elapsed > divePose.jumpAt + VOLLEY_PREPARE + 0.5))
+    ) {
+      vx = vz = 0;
+      p.vx = p.vz = 0;
+    }
+    const mate = m.players[p.id ^ 1];
+    const exchanging =
+      f.lastTeam === p.team || a?.type === "pass" || a?.type === "lob";
+    p.faceHeading =
+      exchanging &&
+      Math.hypot(vx, vz) < 0.65 &&
+      !divePose?.dive &&
+      divePose?.jumpAt == null
+        ? Math.atan2(mate.x - p.x, mate.z - p.z)
+        : undefined;
+    p.walkRequested =
+      (human && !!command.jockey) ||
+      (a?.type === "pass" && !a.dive && Math.hypot(vx, vz) < 4.2);
     p.moveIntent = { x: vx, z: vz };
     p.turnIntent = p.moveIntent;
     stepLocomotion(p, vx, vz, dt, { surface: "sand" });
     p.x = clamp(p.x, p.team === 0 ? -10 : 0.35, p.team === 0 ? -0.35 : 10);
     p.z = clamp(p.z, -6, 6);
-    if (divePose?.dive) p.locomotion.heading = divePose.heading;
+    if (divePose?.dive || divePose?.jumpAt != null)
+      p.locomotion.heading = divePose.heading;
     p.dx = Math.sin(p.locomotion.heading);
     p.dz = Math.cos(p.locomotion.heading);
-    if (!human && !p.volleyPending && !p.altinhaPose?.dive) {
+    if (
+      !human &&
+      !p.volleyPending &&
+      !p.altinhaPose?.dive &&
+      !p.altinhaPose?.acrobatic
+    ) {
       if (
         f.phase === "serve" &&
         p.id === f.server &&
@@ -443,13 +639,19 @@ export function updateFootvolley(m, dt, input = {}) {
     if (!a || a.serve || m.elapsed - a.startedAt < 0.12) continue;
     a.heading = p.locomotion.heading;
     const surface =
-      a.kind === "head" || a.kind === "chest"
-        ? bodySurface(p, a, b, m.elapsed)
-        : {
-            x: p.x + p.dx * (a.dive ? 0.8 : 0.4),
-            z: p.z + p.dz * (a.dive ? 0.8 : 0.4),
-            y: a.dive ? 0.65 : 0.55,
-          };
+      a.kind === "high-kick"
+        ? volleyFootSurface(p, a, m.elapsed)
+        : a.kind === "head" || a.kind === "chest"
+          ? bodySurface(p, a, b, m.elapsed)
+          : {
+              x: p.x + p.dx * (a.dive ? 0.8 : a.kind === "thigh" ? 0.24 : 0.4),
+              z: p.z + p.dz * (a.dive ? 0.8 : a.kind === "thigh" ? 0.24 : 0.4),
+              y: a.dive ? 0.65 : a.kind === "thigh" ? 0.92 : 0.55,
+            };
+    if (a.jumpAt != null && m.elapsed < a.jumpAt + VOLLEY_PREPARE) continue;
+    if (a.kind === "head")
+      surface.y +=
+        volleyJump(a, m.elapsed) - volleyJumpPose(a, m.elapsed).crouch;
     if (
       b.vy < 1 &&
       old.y >= surface.y - 0.1 &&

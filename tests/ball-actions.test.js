@@ -746,3 +746,13 @@ test("short-pass cone tapers from 120 to 20 total degrees with distance", async 
     }
   }
 });
+
+test("ground passes have a speed ceiling even for distant targets on sand", () => {
+  for (const surface of ["grass", "sand", "court", "street"]) {
+    for (const distance of [5, 15, 30, 60, 90]) {
+      const pass = passTrajectory(distance, 1, false, surface);
+      assert.equal(pass.lift, 0);
+      assert.ok(pass.speed <= 26);
+    }
+  }
+});
