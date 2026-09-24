@@ -2,7 +2,7 @@
 
 Public URL: https://kmworks.dev/futebol/ (also www). Exact path redirects to trailing slash.
 
-Currently deployed: Three.js/WebGL2 and Rapier/WASM frontend plus authoritative Node backend (protocol2). Release `20260924-78513c882edd` / `20260924-0dd0da235717` adds four-seat online footvolley. Nginx non-root, port8080 internal only, proxy network, read-only filesystem, tmpfs32MiB, no capabilities,96MiB RAM,.25CPU,64PIDs. TLS/headers/compression use existing Traefik. No database or persistent game-state volume; backend rooms/matches stay in memory. Settings and controller profiles stay in browser localStorage.
+Currently deployed: Three.js/WebGL2 and Rapier/WASM frontend plus authoritative Node backend (protocol2). Release `20260924-4cfd75a775f4` / `20260924-ac8c0da2477c` refines footvolley reception, sets, directed airborne attacks, jump preparation and teammate support, plus three movement speeds and softer grounded balls. Nginx non-root, port8080 internal only, proxy network, read-only filesystem, tmpfs32MiB, no capabilities,96MiB RAM,.25CPU,64PIDs. TLS/headers/compression use existing Traefik. No database or persistent game-state volume; backend rooms/matches stay in memory. Settings and controller profiles stay in browser localStorage.
 
 Product build stays outside infra at `/opt/futebol/releases/<release-id>`; `/opt/futebol/current` is the active build context. Product workspace: `/Users/eduardokmanrique/Work/games/futebol`. Build locally using `npm ci && npm run build`; upload only dist, Dockerfile, nginx.conf and SHA256SUMS. Source animation database and tests are not published.
 
