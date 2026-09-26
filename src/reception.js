@@ -1,4 +1,5 @@
 import { stepBallMotion } from "./ball-physics.js";
+import { chestContact } from "./chest-control.js";
 export const RECEPTION = {
   body: { probability: 0.999, radius: 0.48, height: 1.9, reach: 0.45 },
   near: { probability: 0.98, radius: 0.85, height: 0.75, reach: 0.82 },
@@ -69,6 +70,7 @@ export function receptionRoll(opportunity, random = Math.random) {
 }
 // Swept proximity, evaluated before rigid-body collision can rebound a fast pass.
 export function receptionContact(p, b, kind, dt) {
+  if (kind === "body" && b.y > 1.12) return chestContact(p, b, dt);
   const dx = b.vx * dt,
     dz = b.vz * dt,
     rx = b.x - p.x,

@@ -127,19 +127,19 @@ test("stationary charge and release keep the support foot planted", () => {
   const { m, p, rig } = setup(),
     sole = new THREE.Vector3(),
     q = new THREE.Quaternion();
-  const anchor = { ...p.locomotion.feet[0] };
+  const anchor = { ...p.locomotion.feet[1] };
   for (let i = 0; i < 180; i++) {
     const charging = i < 90;
     p.kick = i === 90 ? 0.48 : Math.max(0, (p.kick || 0) - 1 / 120);
     stepLocomotion(p, 0, 0, 1 / 120, { charging });
     animateAthlete(rig, p, m, 1 / 60);
-    const foot = p.locomotion.feet[0];
+    const foot = p.locomotion.feet[1];
     assert.ok(foot.contact);
-    rig.legs[0].ankle.getWorldPosition(sole);
+    rig.legs[1].ankle.getWorldPosition(sole);
     assert.ok(
       sole.distanceTo(new THREE.Vector3(anchor.x, anchor.y, anchor.z)) < 0.001,
     );
-    rig.legs[0].ankle.getWorldQuaternion(q);
+    rig.legs[1].ankle.getWorldQuaternion(q);
     assert.ok(
       new THREE.Vector3(0, 1, 0)
         .applyQuaternion(q)
@@ -244,5 +244,5 @@ test("protect walks, unmodified movement keeps normal pace, and sprint stays fas
   }
   assert.ok(speeds[0] < speeds[1] - 1);
   assert.ok(speeds[1] < speeds[2] - 1);
-  assert.ok(Math.abs(speeds[0] - speeds[3]) < 0.1);
+  assert.ok(Math.abs(speeds[0] - speeds[3]) < 0.1, JSON.stringify(speeds));
 });

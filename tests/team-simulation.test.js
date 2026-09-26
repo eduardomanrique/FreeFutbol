@@ -16,7 +16,9 @@ for (const delay of [0, 0.08, 0.15])
       const start = p.matches[1].players[20].x;
       p.step(240, [
         { x: 0, z: 0 },
-        { x: -1, z: 0, sprint: true },
+        // Keep this ownership/shot check clear of the stationary ball holder.
+        // Opposing body collisions are exercised separately below.
+        { x: -1, z: 0.3, sprint: true },
       ]);
       assert.ok(p.matches[1].players[20].x < start - 2);
       assert.equal(p.matches[0].activeTeam, 0);

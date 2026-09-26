@@ -3,6 +3,10 @@
 export const TEAM_PROTOCOL = 1;
 export const TEAM_BATCH_SECONDS = 0.05;
 export const POSE_FIELDS = [
+  "footedness",
+  "chestTrap",
+  "turnAction",
+  "movingStrike",
   "kick",
   "tackle",
   "sliding",
@@ -32,6 +36,7 @@ export const POSE_FIELDS = [
   "throwIn",
   "receiveTurn",
   "faceHeading",
+  "ballLookYaw",
 ];
 export const WORLD_FIELDS = [
   "ball",
@@ -131,6 +136,9 @@ function validPose(p) {
     "sprintRequested",
   ];
   const objects = [
+    "chestTrap",
+    "turnAction",
+    "movingStrike",
     "slide",
     "knockdown",
     "evade",
@@ -148,6 +156,10 @@ function validPose(p) {
   ];
   for (const [k, v] of Object.entries(p)) {
     if (!POSE_FIELDS.includes(k)) return false;
+    if (k === "footedness") {
+      if (!["right", "left", "both"].includes(v)) return false;
+      continue;
+    }
     if (
       booleans.includes(k)
         ? typeof v !== "boolean"

@@ -436,9 +436,12 @@ test("45, 90 and 180 degree sprint cuts redirect at contact while body retains m
       const touch = p.lastDribble;
       assert.equal(touch.kind, "cut");
       const speed = Math.hypot(touch.vx, touch.vz);
+      const firstAngle = ((degrees === 90 ? 45 : degrees) * Math.PI) / 180;
       assert.ok(
-        (touch.vx * input.x + touch.vz * input.z) / speed > 0.999,
-        `${degrees}: first contact follows input`,
+        (touch.vx * Math.cos(firstAngle) + touch.vz * Math.sin(firstAngle)) /
+          speed >
+          0.999,
+        `${degrees}: a running right-angle change begins with a 45-degree contact`,
       );
       assert.ok(p.vx > 2, `${degrees}: body retains forward momentum`);
       const x = p.x;
@@ -592,11 +595,18 @@ test("direction changes keep steering the ball while the athlete recovers withou
           last = m.lastTouch.time;
           contacts++;
           const t = p.lastDribble;
+          const intent = p.dribbleIntent;
           assert.ok(
-            (t.vx * input.x + t.vz * input.z) / Math.hypot(t.vx, t.vz) > 0.999,
+            (t.vx * intent.x + t.vz * intent.z) /
+              (Math.hypot(t.vx, t.vz) * Math.hypot(intent.x, intent.z)) >
+              0.999,
           );
         }
-        if (contacts >= 2 && Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.2)
+        if (
+          contacts >= 2 &&
+          !["plant", "touch", "settle"].includes(p.turnAction?.phase) &&
+          Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.2
+        )
           break;
       }
       assert.ok(

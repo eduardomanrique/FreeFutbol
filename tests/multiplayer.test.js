@@ -77,6 +77,7 @@ test("input protocol rejects invalid axes/events and strips client authority", (
     chip: false,
     secondPress: false,
     hands: false,
+    keeperRush: false,
     events: [],
   });
   for (const patch of [

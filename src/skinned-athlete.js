@@ -18,6 +18,10 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { MotionLibrary } from "./motion-matching.js";
 import { headPosition } from "./heading.js";
+import { preferredFoot, rigFoot } from "./footedness.js";
+import { slidePose, fallPose, bicyclePose, ease } from "./movement-phases.js";
+import { chestPose } from "./chest-control.js";
+import { bootGeometry, bootMaterial } from "./football-boot.js";
 const assetRoot = `${import.meta.env.BASE_URL}assets/athlete/`;
 export async function loadAthleteAssets() {
   const [model, meta, data, hair] = await Promise.all([
@@ -132,6 +136,37 @@ function rotateWorld(bone, delta) {
   bone.quaternion.copy(parentQ.invert()).multiply(worldQ);
   bone.updateWorldMatrix(false, true);
 }
+function orientPalm(arm, normal, fingers) {
+  const along = arm.palm
+    .getWorldPosition(new T.Vector3())
+    .sub(arm.hand.getWorldPosition(new T.Vector3()))
+    .normalize();
+  const across = arm.index
+    .getWorldPosition(new T.Vector3())
+    .sub(arm.pinky.getWorldPosition(new T.Vector3()))
+    .normalize();
+  // Index-to-pinky ordering is mirrored between hands. Preserve the anatomical
+  // palm side instead of choosing whichever normal happens to face the target.
+  const beforeNormal = across.cross(along).normalize().multiplyScalar(arm.side);
+  const before = new T.Matrix4().makeBasis(
+    along.clone().cross(beforeNormal).normalize(),
+    along,
+    beforeNormal,
+  );
+  const afterAlong = fingers
+    .clone()
+    .addScaledVector(normal, -fingers.dot(normal))
+    .normalize();
+  const after = new T.Matrix4().makeBasis(
+    afterAlong.clone().cross(normal).normalize(),
+    afterAlong,
+    normal,
+  );
+  rotateWorld(
+    arm.hand,
+    new T.Quaternion().setFromRotationMatrix(after.multiply(before.invert())),
+  );
+}
 // Minimal correction of the sampled pose. Preserve the animated knee plane and
 // ankle orientation; toe contacts still allow the heel to rise and roll.
 export function correctLeg(
@@ -193,12 +228,8 @@ export function correctLeg(
   foot.quaternion.copy(parentQ.invert()).multiply(footRotation);
   foot.updateWorldMatrix(false, true);
 }
-const shoeGeometry = new T.CapsuleGeometry(0.064, 0.16, 3, 8)
-  .rotateX(Math.PI / 2)
-  .scale(1, 0.9, 1);
-const shoeMaterials = [0xd6e06a, 0x252824, 0xeeeeea].map(
-  (color) => new T.MeshStandardMaterial({ color, roughness: 0.65 }),
-);
+const shoeGeometry = bootGeometry();
+const shoeMaterials = [0xd6e06a, 0x252824, 0xeeeeea].map(bootMaterial);
 export function buildSkinnedAthlete(assets, id) {
   const root = new T.Group(),
     model = clone(assets.model);
@@ -318,7 +349,7 @@ export function animateSkinnedAthlete(rig, p, match) {
       /^(upperarm|lowerarm)_/.test(bone.name)
     ) {
       const rest = new T.Quaternion().fromArray(motion.idlePose, offset + 3);
-      bone.quaternion.slerp(rest, (motion.relaxedBlend || 0) * 0.5);
+      bone.quaternion.slerp(rest, (motion.relaxedBlend || 0) * 0.15);
     }
   }
   // A stable anatomical bend plane is shared by every mode. The old solver
@@ -350,7 +381,7 @@ export function animateSkinnedAthlete(rig, p, match) {
       rig.head,
       new T.Quaternion().setFromAxisAngle(
         new T.Vector3(0, 1, 0),
-        T.MathUtils.clamp(yaw, -0.55, 0.55) * 0.38 * calm,
+        p.ballLookYaw ?? T.MathUtils.clamp(yaw, -0.55, 0.55) * 0.38 * calm,
       ),
     );
   }
@@ -401,12 +432,15 @@ export function animateSkinnedAthlete(rig, p, match) {
     rig.torso.rotateX(p.header.fold || 0);
     rig.head.rotateX((p.header.fold || 0) * 0.5);
     for (const arm of rig.arms) {
-      arm.upper.rotateZ(arm.side * 0.65);
-      arm.upper.rotateX(-0.25);
+      arm.upper.rotateZ(
+        arm.side * (0.24 + 0.5 * Math.max(0, p.header.armDrive || 0)),
+      );
+      arm.upper.rotateX(-0.72 * (p.header.armDrive || 0));
+      arm.lower.rotateX(-0.25);
     }
     for (const leg of rig.legs) {
       leg.anchor = null;
-      leg.shin.rotateX(-0.18);
+      leg.shin.rotateX(0.28 + 0.4 * (p.header.load || 0));
     }
     rig.root.updateMatrixWorld(true);
     const head = rig.head.getWorldPosition(new T.Vector3());
@@ -419,6 +453,21 @@ export function animateSkinnedAthlete(rig, p, match) {
         contact.z - head.z,
       ),
     );
+    rig.root.updateMatrixWorld(true);
+    if (p.header.height <= 0.015) {
+      rig.legs.forEach((leg, i) => {
+        const f = l.feet[1 - i];
+        correctLeg(
+          leg.hip,
+          leg.shin,
+          leg.foot,
+          leg.toe,
+          new T.Vector3(f.x, 0.03, f.z),
+          1.5,
+          legForward,
+        );
+      });
+    }
     rig.root.updateMatrixWorld(true);
     return;
   }
@@ -437,6 +486,8 @@ export function animateSkinnedAthlete(rig, p, match) {
   };
   const up = new T.Vector3(0, 1, 0);
   worldTurn(rig.pelvis, up, expression.twist || 0);
+  worldTurn(rig.pelvis, up, (expression.strikeTwist || 0) * 0.55);
+  worldTurn(rig.torso, up, expression.strikeTwist || 0);
   worldTurn(rig.torso, up, -(expression.twist || 0) * 1.65);
   worldTurn(rig.torso, forward, -(expression.lean || 0));
   worldTurn(rig.head, up, (expression.twist || 0) * 0.35);
@@ -445,8 +496,30 @@ export function animateSkinnedAthlete(rig, p, match) {
   worldTurn(rig.torso, right, (expression.fold || 0) * 0.75);
   worldTurn(rig.head, right, -(expression.fold || 0) * 0.35);
   worldTurn(rig.torso, right, -(expression.strikeLean || 0) * 0.55);
+  const chest = chestPose(p, match.elapsed);
+  worldTurn(rig.torso, right, chest.fold);
+  worldTurn(rig.head, right, -chest.fold * 0.4);
   for (const arm of rig.arms) {
-    worldTurn(arm.upper, forward, arm.side * (expression.arms || 0));
+    if (motion.action === "locomotion" && !motionAction(p) && !p.recovery) {
+      const foot = l.feet[arm.side > 0 ? 1 : 0];
+      const fore = (foot.x - p.x) * forward.x + (foot.z - p.z) * forward.z;
+      const swing = T.MathUtils.clamp(
+        fore / Math.max(0.18, Math.hypot(p.vx, p.vz) * 0.055),
+        -1,
+        1,
+      );
+      worldTurn(arm.upper, right, swing * (expression.armAmplitude || 0));
+      worldTurn(
+        arm.lower,
+        right,
+        -0.15 * Math.min(1, Math.hypot(p.vx, p.vz) / 5),
+      );
+    }
+    worldTurn(
+      arm.upper,
+      forward,
+      arm.side * ((expression.arms || 0) + 0.5 * chest.weight),
+    );
     worldTurn(
       arm.upper,
       right,
@@ -599,16 +672,19 @@ export function animateSkinnedAthlete(rig, p, match) {
         .copy(parentRotation.invert())
         .multiply(desiredRotation);
       leg.foot.updateWorldMatrix(false, true);
+      const sideFoot = p.ballMotion?.finesse && physical.special === "ball";
+      const opening = sideFoot ? physical.heading - l.heading : 0;
+      const toeOffset = sideFoot ? (Math.abs(opening) / 1.3) * 0.1 : 0;
       return {
         kneeDirection: new T.Vector3(
-          Math.sin(l.heading),
+          Math.sin(l.heading + opening * 0.7),
           0,
-          Math.cos(l.heading),
+          Math.cos(l.heading + opening * 0.7),
         ),
         target: new T.Vector3(
-          physical.x,
+          physical.x + Math.sin(physical.heading) * toeOffset,
           Math.max(0.025, physical.y - 0.04),
-          physical.z,
+          physical.z + Math.cos(physical.heading) * toeOffset,
         ),
         limit: 1.2,
         reaching: !physical.contact,
@@ -778,48 +854,190 @@ export function animateSkinnedAthlete(rig, p, match) {
   rig.root.updateMatrixWorld(true);
 }
 
+function supportedAction(
+  rig,
+  p,
+  kind,
+  time,
+  contactAt = 0.42,
+  contactHeight = 2,
+) {
+  const h =
+    p.bicycle?.heading ?? p.altinhaPose?.heading ?? p.locomotion.heading;
+  const fwd = new T.Vector3(Math.sin(h), 0, Math.cos(h));
+  const sideAxis = new T.Vector3(Math.cos(h), 0, -Math.sin(h));
+  const profile =
+    kind === "slide"
+      ? slidePose(time)
+      : kind === "fall"
+        ? fallPose(time)
+        : bicyclePose(time, contactAt);
+  const point = (side, y, front) =>
+    new T.Vector3(p.x, y, p.z)
+      .addScaledVector(sideAxis, side)
+      .addScaledVector(fwd, front);
+  for (let i = 0; i < rig.bones.length; i++) {
+    rig.bones[i].position.fromArray(p.motion.idlePose, i * 7);
+    rig.bones[i].quaternion.fromArray(p.motion.idlePose, i * 7 + 3);
+  }
+  rig.root.rotation.set(0, h, 0);
+  rig.root.rotateX(profile.pitch);
+  rig.head.rotateX(
+    profile.head ||
+      (kind === "fall" ? -0.3 * (1 - profile.stand) : 0.2 * (1 - profile.rise)),
+  );
+  rig.root.updateMatrixWorld(true);
+  const pelvis = rig.pelvis.getWorldPosition(new T.Vector3());
+  rig.root.position.add(point(0, profile.pelvis, 0).sub(pelvis));
+  rig.root.updateMatrixWorld(true);
+  const strike = rigFoot(preferredFoot(p));
+  const bicycleTarget =
+    kind === "bicycle" ? p.bicycle?.contact || p.altinhaPose?.contact : null;
+  if (kind === "bicycle") {
+    const leg = rig.legs[strike];
+    const extend =
+      ease((profile.launch - 0.55) / 0.45) *
+      (1 - profile.land) *
+      (1 - profile.rise);
+    const hip = leg.hip.getWorldPosition(new T.Vector3());
+    const knee = leg.shin.getWorldPosition(new T.Vector3());
+    const ankle = leg.foot.getWorldPosition(new T.Vector3());
+    const toe = leg.toe.getWorldPosition(new T.Vector3());
+    const reach =
+      (hip.distanceTo(knee) + knee.distanceTo(ankle)) * 0.994 +
+      ankle.distanceTo(toe);
+    const target = bicycleTarget
+      ? new T.Vector3(bicycleTarget.x, bicycleTarget.y, bicycleTarget.z)
+      : point(strike === 0 ? 0.17 : -0.17, contactHeight, 0);
+    // Put the hip below the striking foot so the knee can fully extend upward.
+    rig.root.position.add(
+      target
+        .clone()
+        .add(new T.Vector3(0, -reach, 0))
+        .sub(hip)
+        .multiplyScalar(extend),
+    );
+    rig.root.updateMatrixWorld(true);
+    const along = leg.toe
+      .getWorldPosition(new T.Vector3())
+      .sub(leg.foot.getWorldPosition(new T.Vector3()))
+      .normalize();
+    const upright = new T.Quaternion().setFromUnitVectors(
+      along,
+      new T.Vector3(0, 1, 0),
+    );
+    rotateWorld(leg.foot, new T.Quaternion().slerp(upright, extend));
+  }
+  rig.legs.forEach((leg, i) => {
+    const side = i === 0 ? 1 : -1;
+    let y = 0.05,
+      z = 0.05;
+    if (kind === "slide") z = i === strike ? profile.reach : profile.other;
+    else if (kind === "fall") z = -0.82 * (1 - profile.stand);
+    else {
+      y =
+        i === strike
+          ? (profile.strikeHeight * contactHeight) / 2
+          : 0.12 +
+            (rig.pelvis.getWorldPosition(new T.Vector3()).y - 0.07) *
+              profile.load *
+              (1 - profile.land);
+      z =
+        i === strike
+          ? -0.1 * (1 - profile.launch) + 0.3 * profile.land
+          : 0.35 * (1 - profile.rise);
+    }
+    leg.anchor = null;
+    const target = point(side * 0.17, y, z);
+    if (kind === "bicycle" && i === strike && bicycleTarget) {
+      target.x +=
+        (bicycleTarget.x - target.x) *
+        profile.launch *
+        (1 - profile.land) *
+        (1 - profile.rise);
+      target.z +=
+        (bicycleTarget.z - target.z) *
+        profile.launch *
+        (1 - profile.land) *
+        (1 - profile.rise);
+    }
+    // The knee faces the front of the body, including when lying on the back.
+    // A fixed upward pole reverses the free leg as the player stands up.
+    const bend =
+      kind === "fall" || kind === "bicycle"
+        ? fwd
+            .clone()
+            .multiplyScalar(Math.cos(profile.pitch))
+            .add(new T.Vector3(0, -Math.sin(profile.pitch), 0))
+        : fwd;
+    correctLeg(leg.hip, leg.shin, leg.foot, leg.toe, target, 2, bend);
+  });
+  rig.root.updateMatrixWorld(true);
+  rig.groundHands = [];
+  for (const arm of rig.arms) {
+    for (const { bone, rest } of arm.fingers) bone.quaternion.copy(rest);
+    const support = point(
+      arm.side * 0.28,
+      0.065,
+      kind === "fall" ? 0.46 : kind === "slide" ? -0.14 : -0.28,
+    );
+    const ready = point(
+      arm.side * 0.48,
+      Math.max(0.65, profile.pelvis + 0.12),
+      0.16,
+    );
+    const target = ready.lerp(support, profile.hands);
+    correctLeg(
+      arm.upper,
+      arm.lower,
+      arm.hand,
+      arm.palm,
+      target,
+      2,
+      sideAxis.clone().multiplyScalar(arm.side).addScaledVector(fwd, -0.45),
+    );
+    if (profile.hands > 0.1) {
+      orientPalm(arm, new T.Vector3(0, -1, 0), fwd);
+      correctLeg(
+        arm.upper,
+        arm.lower,
+        arm.hand,
+        arm.palm,
+        target,
+        2,
+        sideAxis.clone().multiplyScalar(arm.side),
+      );
+      rig.groundHands.push({
+        target: target.toArray(),
+        actual: arm.palm.getWorldPosition(new T.Vector3()).toArray(),
+      });
+    }
+  }
+  rig.actionPhase = profile.phase;
+  rig.root.updateMatrixWorld(true);
+}
+
 function poseSpecial(rig, p, match) {
   const special =
     p.slide || p.knockdown || p.evade || p.bicycle || p.celebration;
   const wall = match.setPiece?.wall?.includes(p.id);
   if (!special && !wall) return false;
+  if (p.slide || p.knockdown || p.bicycle) {
+    supportedAction(
+      rig,
+      p,
+      p.slide ? "slide" : p.knockdown ? "fall" : "bicycle",
+      (p.slide || p.knockdown || p.bicycle).time,
+      p.bicycle?.contactAt,
+      p.bicycle?.height,
+    );
+    return true;
+  }
   for (let i = 0; i < rig.bones.length; i++) {
     rig.bones[i].position.fromArray(p.motion.idlePose, i * 7);
     rig.bones[i].quaternion.fromArray(p.motion.idlePose, i * 7 + 3);
   }
-  let pelvisHeight = null;
-  if (p.slide) {
-    const u = p.slide.time,
-      blend = Math.min(1, u / 0.13) * Math.min(1, (1.05 - u) / 0.22);
-    rig.root.rotateX(-1.12 * blend);
-    pelvisHeight = 1.02 - 0.66 * blend;
-    rig.legs[0].hip.rotateX(0.45 * blend);
-    rig.legs[1].hip.rotateX(-0.6 * blend);
-    rig.legs[1].shin.rotateX(1.2 * blend);
-    rig.arms.forEach((a) => {
-      a.upper.rotateZ(a.side * 0.65 * blend);
-      a.lower.rotateX(-0.45);
-    });
-  } else if (p.knockdown) {
-    const t = p.knockdown.time,
-      blend = Math.min(1, t / 0.18) * Math.min(1, (1.6 - t) / 0.45);
-    rig.root.rotateX(1.38 * blend);
-    pelvisHeight = 1.02 - 0.72 * blend;
-    rig.arms.forEach((a) => a.upper.rotateX(-1.1 * blend));
-    rig.legs.forEach((l) => l.shin.rotateX(0.65 * blend));
-  } else if (p.bicycle) {
-    const u = Math.min(1, p.bicycle.time / 1.2),
-      air = Math.sin(Math.PI * u);
-    rig.root.rotation.set(0, p.bicycle.heading, 0);
-    rig.root.rotateX(-2.6 * air);
-    pelvisHeight = 0.95 + 0.42 * air;
-    const scissor = Math.sin(u * Math.PI * 3);
-    rig.legs[0].hip.rotateX(1.1 * scissor);
-    rig.legs[1].hip.rotateX(-1.1 * scissor);
-    rig.legs[0].shin.rotateX(0.3);
-    rig.legs[1].shin.rotateX(0.85);
-    rig.arms.forEach((a) => a.upper.rotateZ(a.side * 0.95));
-  } else if (p.evade) {
+  if (p.evade) {
     rig.root.position.y = p.evade.height;
     rig.legs.forEach((l) => {
       l.hip.rotateX(-0.6);
@@ -873,27 +1091,17 @@ function poseSpecial(rig, p, match) {
     });
   }
   rig.root.updateMatrixWorld(true);
-  if (pelvisHeight !== null) {
-    const current = rig.pelvis.getWorldPosition(new T.Vector3());
-    rig.root.position.y += pelvisHeight - current.y;
-    rig.root.updateMatrixWorld(true);
-  }
-  // Avoid limbs penetrating the street while retaining the low sliding pose.
-  if (p.slide || p.knockdown || p.bicycle) {
-    let lowest = Infinity;
-    for (const leg of rig.legs)
-      for (const b of [leg.foot, leg.toe])
-        lowest = Math.min(lowest, b.getWorldPosition(new T.Vector3()).y);
-    if (lowest < 0.045) rig.root.position.y += 0.045 - lowest;
-  }
-  rig.root.updateMatrixWorld(true);
   return true;
 }
 function poseGoalkeeper(rig, p) {
   const g = p.goalkeeping,
     dir = p.team === 0 ? 1 : -1;
   const active = g.mode !== "set";
-  rig.root.rotation.set(0, (dir * Math.PI) / 2, g.roll);
+  rig.root.rotation.set(
+    0,
+    g.holding ? p.locomotion.heading : (dir * Math.PI) / 2,
+    g.roll,
+  );
   rig.root.updateMatrixWorld(true);
   const pelvis = rig.pelvis.getWorldPosition(new T.Vector3());
   rig.root.position.add(new T.Vector3(p.x, g.height, p.z).sub(pelvis));
@@ -904,7 +1112,7 @@ function poseGoalkeeper(rig, p) {
     (Math.abs(g.roll) < 0.5 && g.height < 1.02)
   ) {
     rig.legs.forEach((leg, i) => {
-      const f = p.locomotion.feet[i];
+      const f = p.locomotion.feet[1 - i];
       correctLeg(
         leg.hip,
         leg.shin,
@@ -932,6 +1140,28 @@ function poseGoalkeeper(rig, p) {
       );
   rig.root.position.y += clearance;
   rig.root.updateMatrixWorld(true);
+  const delivery = g.distribution || g.deliveryFollow;
+  if (delivery?.type === "punt") {
+    const t = T.MathUtils.clamp(delivery.age / 0.55, 0, 1),
+      aim = delivery.aim;
+    const recovery = 1 - T.MathUtils.smoothstep(delivery.age, 0.55, 0.85);
+    const leg = rig.legs[rigFoot(preferredFoot(p))];
+    const reach = (-0.25 + 0.95 * Math.sin((t * Math.PI) / 2)) * recovery;
+    correctLeg(
+      leg.hip,
+      leg.shin,
+      leg.foot,
+      leg.toe,
+      new T.Vector3(
+        p.x + aim.x * reach,
+        0.1 + 0.3 * Math.sin((t * Math.PI) / 2) * recovery,
+        p.z + aim.z * reach,
+      ),
+      2,
+      new T.Vector3(aim.x, 0, aim.z),
+    );
+    rig.root.updateMatrixWorld(true);
+  }
   rig.keeperHands = [];
   rig.arms.forEach((arm, i) => {
     for (const { bone, rest } of arm.fingers) bone.quaternion.copy(rest);
@@ -940,39 +1170,36 @@ function poseGoalkeeper(rig, p) {
       g.hands[i]?.y ?? 1,
       g.hands[i]?.z ?? p.z,
     );
-    correctLeg(
-      arm.upper,
-      arm.lower,
-      arm.hand,
-      arm.palm,
-      target,
-      3,
-      new T.Vector3(-dir, 0.1, arm.side * 0.35),
-    );
-    // Face the palm into the incoming flight, using the same open-hand basis as falls.
-    const along = arm.palm
-      .getWorldPosition(new T.Vector3())
-      .sub(arm.hand.getWorldPosition(new T.Vector3()))
-      .normalize();
-    const across = arm.index
-      .getWorldPosition(new T.Vector3())
-      .sub(arm.pinky.getWorldPosition(new T.Vector3()))
-      .normalize();
-    const normal = across.cross(along).normalize();
-    if (normal.x * dir < 0) normal.negate();
-    rotateWorld(
-      arm.hand,
-      new T.Quaternion().setFromUnitVectors(normal, new T.Vector3(dir, 0, 0)),
-    );
-    correctLeg(
-      arm.upper,
-      arm.lower,
-      arm.hand,
-      arm.palm,
-      target,
-      3,
-      new T.Vector3(-dir, 0.1, arm.side * 0.35),
-    );
+    const elbowPole = new T.Vector3(-dir, -0.65, arm.side * 0.35);
+    // Follow the forearm with a modest wrist bend. Forcing vertical fingers
+    // made the wrist fold back excessively, especially during the dive.
+    for (let pass = 0; pass < 3; pass++) {
+      correctLeg(
+        arm.upper,
+        arm.lower,
+        arm.hand,
+        arm.palm,
+        target,
+        3,
+        elbowPole,
+      );
+      const forearm = arm.hand
+        .getWorldPosition(new T.Vector3())
+        .sub(arm.lower.getWorldPosition(new T.Vector3()))
+        .normalize();
+      const up = new T.Vector3(0, 1, 0);
+      const angle = forearm.angleTo(up);
+      const lift = new T.Quaternion().slerp(
+        new T.Quaternion().setFromUnitVectors(forearm, up),
+        Math.min(1, T.MathUtils.degToRad(35) / Math.max(0.001, angle)),
+      );
+      const fingers = forearm.applyQuaternion(lift);
+      const normal = new T.Vector3(dir, 0, 0)
+        .addScaledVector(fingers, -dir * fingers.x)
+        .normalize();
+      orientPalm(arm, normal, fingers);
+    }
+    correctLeg(arm.upper, arm.lower, arm.hand, arm.palm, target, 3, elbowPole);
     const actual = arm.palm.getWorldPosition(new T.Vector3());
     rig.keeperHands.push({
       target: target.clone(),
@@ -985,6 +1212,18 @@ function poseGoalkeeper(rig, p) {
 
 function poseAltinha(rig, p, m) {
   let action = p.altinhaPose;
+  if (action?.kind === "bicycle") {
+    supportedAction(
+      rig,
+      p,
+      "bicycle",
+      m.elapsed - action.startedAt,
+      (action.hitAt ?? action.bicycleContactAt ?? action.startedAt + 0.42) -
+        action.startedAt,
+      action.contact?.y ?? action.height ?? 1.5,
+    );
+    return;
+  }
   const time = m.elapsed,
     heading = p.locomotion.heading;
   if (

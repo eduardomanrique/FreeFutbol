@@ -1,6 +1,11 @@
 import { shotBand, loftedShotLift } from "./ball-actions.js";
 import { initLocomotion } from "./locomotion.js";
 import { stepBallMotion } from "./ball-physics.js";
+import {
+  SLIDE_DURATION,
+  FALL_DURATION,
+  bicycleDuration,
+} from "./movement-phases.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 export const unavailable = (p) => !!(p.slide || p.knockdown || p.bicycle);
@@ -47,7 +52,7 @@ export function stepSpecial(m, p, dt) {
     p.vz = k.dz * 1.8 * Math.exp(-k.time * 6);
     p.x += p.vx * dt;
     p.z += p.vz * dt;
-    if (k.time > 1.6) {
+    if (k.time > FALL_DURATION) {
       p.knockdown = null;
       p.recovery = 0.25;
       initLocomotion(p);
@@ -71,7 +76,7 @@ export function stepSpecial(m, p, dt) {
       -m.field.halfWidth + 0.5,
       m.field.halfWidth - 0.5,
     );
-    if (s.time >= 1.05) {
+    if (s.time >= SLIDE_DURATION) {
       p.slide = null;
       p.sliding = false;
       initLocomotion(p);
@@ -81,7 +86,7 @@ export function stepSpecial(m, p, dt) {
   if (p.bicycle) {
     p.bicycle.time += dt;
     p.vx = p.vz = 0;
-    if (p.bicycle.time > 1.2) {
+    if (p.bicycle.time > bicycleDuration(p.bicycle.contactAt)) {
       p.bicycle = null;
       p.recovery = 0.3;
       initLocomotion(p);
@@ -220,6 +225,7 @@ export function planBicycle(m, p, action) {
       contactAt: t,
       hit: false,
       height: f.y,
+      contact: { x: f.x, y: f.y, z: f.z },
       heading: beach ? Math.atan2(-dir, 0) : p.locomotion.heading,
     };
   }
@@ -228,12 +234,7 @@ export function planBicycle(m, p, action) {
 export function bicycleContact(m, p) {
   const a = p.bicycle,
     b = m.ball;
-  if (
-    !a ||
-    a.hit ||
-    a.time < a.contactAt - 0.035 ||
-    a.time > a.contactAt + 0.12
-  )
+  if (!a || a.hit || a.time < a.contactAt || a.time > a.contactAt + 0.12)
     return;
   if (b.owner !== null || b.y < 1.2 || b.y > 2.4 || distance(p, b) > 0.8)
     return;
@@ -293,7 +294,11 @@ export function bicycleContact(m, p) {
 export function celebrate(m, dt) {
   const team = m.lastGoalTeam ?? 1 - m.restartTeam;
   for (const p of m.players) {
-    p.slide = p.knockdown = p.evade = p.bicycle = null;
+    // Finish landing and getting up before the goal celebration begins.
+    if (stepSpecial(m, p, dt)) {
+      p.motion?.update(p, m, dt);
+      continue;
+    }
     p.celebration ||= { time: 0, won: p.team === team, style: p.id % 3 };
     const c = p.celebration;
     c.time += dt;

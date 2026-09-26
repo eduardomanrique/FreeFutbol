@@ -645,3 +645,73 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 - User authorized committing all changes, pushing and deploying. Public backend initially healthy, protocol 2, zero rooms and matches. Publication pending below.
 
 - Publication completed: source commit 7d51596 pushed to origin/codex/mobile-app. Frontend 20260924-4cfd75a775f4, backend 20260924-ac8c0da2477c; coordinated activation passed SHA256 validation, both health checks and unrelated-container preservation. Public HTTPS health responds protocol 2; public HTML and main JS byte-match local build. Rollback backup: /opt/futebol/deploy-backups/stack-20260924-4cfd75a775f4. No pending deployment TODOs.
+## Revisão visual de movimentos (pedido de 26/09/2026)
+- Pedido: mapear movimentos do jogador e entregar quadros sequenciais para crítica visual, incluindo cabeceio, chutes parado/andando/correndo, altinha e mudanças de direção de 45°/90°/180°.
+- Criado `scripts/capture-motion-review.mjs`, que usa o modelo e renderizador reais do jogo em cenários controlados. Galeria em `output/motion-review/index.html`, com 29 grupos e 209 imagens; `manifest.json` guarda tempos e estados amostrados.
+- Cobertura: partida, caminhada, corrida, sprint, frenagem, giros, três entradas de chute, cabeceio, carrinho, queda, esquiva, defesa do goleiro, comemoração, bicicleta e 11 toques/truques da altinha.
+- Verificação: todas as 209 imagens existem e têm conteúdo; inspeção visual de giro, chute, cabeceio, volta ao mundo, bicicleta e defesa; sem erros de página após ajustar o estado de altinha da captura. `npm run build` passou. Cliente visual do skill confirmou partida normal em `output/motion-review/smoke`.
+- Limite: são amostras dirigidas dos estados de animação existentes; a galeria não prova a qualidade das transições em partida real nem representa cada variação contextual de passe, recepção ou defesa. Próxima iteração pode usar críticas quadro a quadro para ajustar poses e acrescentar ações específicas.
+
+## 2026-09-26 — Revisão das animações após as anotações do usuário
+- Implementado `footedness` por jogador (`right`, `left`, `both`), com todos destros por padrão. O lado dominante orienta o chute, as viradas e a bicicleta; o estado é transmitido nos dois protocolos de rede.
+- Braços acompanham a amplitude da passada. Freada baixa o quadril, flexiona o tronco e termina com contato da sola; a bola só é travada quando o jogador já reduziu a velocidade, evitando ultrapassá-la.
+- Viradas: apoio inicial por direção, pé dominante no contato, 90° em corrida dividido em dois contatos de cerca de 45°, e 180° com apoio contrário, freada e passos curtos antes do pivô. Incluídas vistas para direita/esquerda e andando/correndo.
+- Chutes ganharam torção do quadril/tronco e abertura dos braços. Cabeceio tem preparação no solo com flexão dos joelhos/tronco, braços para trás, impulsão e absorção da aterrissagem.
+- Carrinho termina sentado, com olhar levantado e mãos no apoio; queda usa as mãos para elevar o corpo. Bicicleta estende a perna direita verticalmente, desce de costas, apoia mãos/cotovelos e levanta. Um gol agora espera a aterrissagem/recuperação antes da comemoração.
+- Após as duas imagens enviadas durante a execução: corrigida a extensão vertical da bicicleta colocando o quadril sob o pé de contato; corrigida a orientação anatômica das palmas do goleiro, sem escolher o lado arbitrariamente. Dedos abertos e voltados para cima.
+- Domínio no peito foi integrado à recepção de bolas altas no campo, rua, quadra, areia e gol a gol; altinha e futevôlei mantêm seus contatos de peito existentes.
+- Capturador refeito: cada sequência agora executa entradas/ações reais a 120 Hz, a partir de condições iniciais controladas. A bola segue a simulação. Seleção dos quadros inclui contatos, preparação do salto, freada e recuperação; efeitos gráficos foram ocultados somente nas imagens de revisão.
+- Validação: 266/266 testes passaram; build passou (aviso de tamanho de chunks já existente). Sete novos testes cobrem lateralidade, rede, dois contatos da virada, pivô, preparação do salto, peito e recuperação após gol. O teste de rede que verifica movimentação/chute usa percurso lateral para não colidir involuntariamente com o portador; colisões seguem cobertas pelo teste dedicado.
+- `scripts/verify-motion-review.mjs` confirmou 39 cenários com contatos esperados, perna de chute quase colinear e vertical na bicicleta, palmas do goleiro voltadas para a bola e mãos próximas ao chão no carrinho/queda. Cliente do skill passou com estado e screenshot em `output/motion-review/smoke`, sem erros de página.
+- Galeria final substituída: 39 sequências, 398 quadros, todos os arquivos conferidos. Inspeção visual final de corrida, freada, giro de 90°, preparação do cabeceio, chute, carrinho, queda, defesa, bicicleta e bicicleta da altinha. Incluído quadro da preparação e da extensão no contato. As duas bicicletas compartilham a extensão dominante e mantêm o joelho oposto levantado. Nenhuma publicação/deploy feita neste pedido.
+
+## 2026-09-26 — Punho do goleiro mais natural
+- Usuário apontou dobra excessiva da mão. A orientação agora acompanha o antebraço com flexão moderada; o cotovelo fica mais baixo e a palma continua aberta para a bola. O alvo físico da defesa foi preservado.
+- Medição no modelo: a dobra passou de aproximadamente 95–158° para 33–44° na preparação, defesa e recuperação. Refeito o grupo do goleiro (11 imagens) na galeria existente.
+- Validação visual da espera e do contato na defesa; verificador dos 39 cenários passou com checagem de punho abaixo de 50° na espera. Build e cliente do skill passaram, sem erros; capturas em `output/motion-review/keeper-wrist-smoke`. Sem pendências deste ajuste.
+
+## 2026-09-26 — Joelhos na queda de bruços
+- Corrigido o plano de flexão das pernas para acompanhar a inclinação do corpo: de bruços, os joelhos apontam para o chão; durante a recuperação, voltam gradualmente à orientação em pé.
+- Refeitas as sequências de queda/recuperação e esquiva. A galeria usa versões nos endereços das imagens para evitar capturas antigas em cache após sobrescrever os arquivos.
+- Validação: auditoria dos ossos em 11 momentos da queda até a recuperação, teste de dobradiça do joelho e verificador dos 39 cenários passaram. Inspecionados os quadros de queda, apoio das mãos e subida. Build e cliente visual do skill passaram, sem erros de página; artefatos em `output/motion-review/prone-knee-smoke` e `prone-knee-audit.json`.
+
+## 2026-09-26 — Joelho esquerdo na bicicleta
+- Usuário apontou a dobra invertida da perna esquerda em uma captura da bicicleta. A orientação dos joelhos agora acompanha o tronco também nesta ação, tanto na perna que chuta quanto na outra. Eliminada a referência vertical fixa, que ainda invertia o joelho esquerdo ao levantar.
+- Refeitas 23 imagens das bicicletas no campo e na altinha. Inspecionados preparação, extensão, aterrissagem e recuperação; joelho esquerdo elevado e dobrado para o lado correto, perna direita estendida no contato.
+- Validação: auditoria de 30 momentos nas duas modalidades confirmou o plano anatômico das pernas. Verificador dos 39 cenários passou, incluindo novas checagens do joelho livre acima do quadril e dos joelhos para a frente na recuperação. A checagem usa a direção da ação, pois a direção de locomoção pode mudar durante a bicicleta da altinha. Build e cliente visual passaram sem erros de página; artefatos em `output/motion-review/bicycle-knee-*`.
+
+## 2026-09-26 — bola, chute contínuo, goleiro e orientação defensiva
+- Areia: resistência de rolamento reduzida em aproximadamente 17–22%, incluindo previsão do drible. Cabeceio depende principalmente da velocidade de chegada, sem o antigo multiplicador de chute distante.
+- Chute + direção próximos têm prioridade de chute com mira assistida; corte de 180° com bola adiantada continua a aproximação antes de plantar/frear.
+- Chute em movimento: preparação mais longa/ampla, contato mais rápido e avanço horizontal contínuo. A pedido do usuário após a pesquisa, apoio absorve no máximo 6% da velocidade ao longo de 140 ms, quando há contato com o chão. Frenagem normal só depois da aterrissagem do pé de chute; giro defensivo não interrompe o seguimento.
+- Chuteira: nova malha com sola plana, calcanhar estreito e biqueira baixa; cadarços/sola procedurais sem draw calls adicionais. Mantidos pés descalços da areia.
+- Goleiro avança ao segurar Y/Triângulo, R ou botão de toque sem posse; soltar retorna à meta. Mãos restritas à própria área, incluindo posição da bola. Campo keeperRush incluído no protocolo.
+- Defesa: jogadores sem posse orientam o corpo para a bola, permitindo deslocamento lateral/para trás. Sprint nos modos de futebol orienta para a corrida. Futevôlei mantém orientação para a bola durante deslocamento, exceto ações especiais em execução.
+- Referências e distinções entre biomecânica e aproximações de gameplay: docs/movement-research.md.
+- Validação: 274/274 testes, build aprovado (aviso preexistente sobre chunks grandes), git diff --check limpo. Playwright do skill executado; capturas reais inspecionadas e sem erros de console no audit. Galeria adicional: output/gameplay-tuning/index.html, com chute andando/correndo, defesa e chuteiras. Scripts locais em .tools/review-gameplay-tuning.mjs e .tools/web_game_playwright_client.review.mjs.
+- Nenhum commit/deploy efetuado. Galeria antiga de 398 quadros não foi regravada neste ajuste; usar a nova galeria e o jogo em localhost:5174 para avaliar estes movimentos.
+
+## Passe comum: companheiro mais próximo no cone
+- Ajuste solicitado: passe comum com força até 75% escolhe estritamente o companheiro mais próximo dentro do cone de assistência; acima disso mantém prioridade direcional/alcance. Passe em profundidade permanece com seu critério próprio.
+- Cone preservado: ±60° até 6 m; estreitamento linear até ±10° aos 22 m, mantendo ±10° além disso. Sem candidatos no cone, permanece o fallback anterior de assistência direcional.
+- 29 testes de ball-actions passaram, incluindo distância versus alinhamento, limite de força e exclusão fora do cone. git diff --check limpo.
+
+## 2026-09-26 — cones por força e chute colocado de chapa
+- Substituída a regra anterior: passe comum usa 180° totais até 1/3 da força, 90° até 2/3 e 40° acima disso. Escolhe estritamente o companheiro mais próximo dentro do cone, inclusive no passe forte. Sem candidato elegível, passe livre na direção do comando, sem troca artificial de receptor. Profundidade/lob preservam seleção própria.
+- Pesquisa primária Nunome et al. (2002, PMID 12471312) e Nunome et al. (2023/2025, PMID 37357794): abertura via rotação externa do quadril, apresentação da face interna e ajuste do tornozelo. Referências em docs/movement-research.md.
+- Chute colocado: flag de gesto persistida na ballMotion, abertura gradual do pé e polo do joelho coordenado, alvo visual compensado para contato medial em vez da ponta, retorno gradual. Espelhado para destros/canhotos; cavadinha excluída. Amplitudes são aproximações de animação.
+- Testes de limite de cone por força/distância, prioridade da distância mesmo com força máxima, passe sem receptor e gesto espelhado com contato real. Fixtures anteriores de recepção agora posicionam um receptor explicitamente elegível.
+- 277/277 testes passaram; build aprovado, aviso habitual de chunks grandes; git diff --check limpo. Playwright do skill rodou e screenshot de jogo inspecionado. Capturas específicas parado/correndo também inspecionadas, sem pageerrors: output/finesse-review/index.html (script .tools/review-finesse.mjs).
+
+## 2026-09-26 — orientação para a bola somente nas primeiras duas passadas
+- Substituída a orientação corporal contínua sem posse por src/defensive-facing.js, compartilhado pelo futebol e futevôlei: conta duas aterrissagens reais dos pés, depois libera orientação pela direção de deslocamento. Mudança de direção contínua não reinicia a contagem; parar fisicamente a reinicia e orienta o corpo à bola. Sprint libera orientação imediatamente e não reinicia as duas passadas ao soltar o botão ainda em movimento.
+- Cabeça acompanha a bola com suavização temporal e limite de 0,9 rad (aprox. 52°); ballLookYaw sincronizado nos dois protocolos. Ações de chute, salto, queda etc. conservam sua pose própria.
+- 278/278 testes passaram; build aprovado (aviso habitual de chunks), diff check limpo. Audit Playwright verificou e capturou primeira passada, caminhada posterior e parada, com contagem e rumo conferidos: output/defensive-steps. Capturas reais inspecionadas; audit sem pageerrors.
+- O smoke do skill expôs um delta de tempo negativo quando o relógio virtual é reajustado: criava anéis de efeito enormes. Limitado rawElapsed a zero em src/main.js; repetido o smoke para conferir renderização normal, sem alterar velocidades da simulação.
+
+## 2026-09-26 — marcação próxima, posse manual do goleiro e área na areia
+- Orientação corporal para a bola somente em marcação próxima (entra a 3 m, sai a 3,6 m). Sem postura contra companheiro com posse; de longe corpo segue deslocamento inclusive ao parar. Cabeça preserva acompanhamento suave. Substitui a regra anterior de duas passadas.
+- Encaixe seleciona o goleiro humano e cancela ações previamente enfileiradas. Não distribui automaticamente; passe/J lança com as mãos, chute/Espaço solta e dá chutão. Gesto de soltura, golpe e recuperação implementado; botões móveis e ajuda contextual atualizados. IA adversária mantém devolução automática; gol a gol preserva regras próprias.
+- src/keeper-possession.js centraliza área para captura e contenção do goleiro com posse. Caminhada permitida, bola e corpo ficam dentro da área; carga/direção mantêm os comandos existentes. Areia usa faixa de 9 m em toda largura, com quatro bandeiras amarelas nas laterais, segundo referência FIFA em docs/movement-research.md.
+- Testes: encaixe real, seleção, espera prolongada sem devolução, lançamento/chutão, movimentação limitada com bola, limites das três superfícies/ambos os lados, marcação próxima/distante. 281/281 testes passaram; build aprovado (aviso habitual de chunks), git diff --check limpo.
+- Capturas reais conferidas do encaixe, preparação do chutão, lançamento e bandeiras: output/keeper-review/index.html. Audit .tools/review-keeper-control.mjs passou sem pageerrors. Cenário de areia corrigido no audit para não iniciar com a bola nas coordenadas de campo grande.

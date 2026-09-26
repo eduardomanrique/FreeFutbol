@@ -131,7 +131,12 @@ const touch = new TouchInput($("touch-controls"), {
       return;
     }
     if (action === "switch") return gameAction("switchPlayer");
-    if (action === "hands" || action === "secondPress") return;
+    if (
+      action === "hands" ||
+      action === "secondPress" ||
+      action === "keeperRush"
+    )
+      return;
     if (action === "tackle") return gameAction("tackle");
     const button = action;
     if (action === "chip") action = "shoot";
@@ -426,6 +431,9 @@ function showModal(type) {
         ["Trocar jogador", "LB / Q"],
         ["Desarmar / carrinho", "X no teclado · X / B no controle"],
         ["Passe em profundidade", "Y / I"],
+        ["Sair com goleiro · segure sem posse", "Y / Triângulo / R"],
+        ["Goleiro com a bola · lançar com a mão", "Passe / J"],
+        ["Goleiro com a bola · chutão", "Chute / Espaço"],
         ["Andar / proteger · segurar ao mover", "LT"],
         ["Chute colocado · segurar RB ao soltar X", "RB + X"],
         ["Cavadinha · segurar LB durante o chute", "LB + X / Q + ESPAÇO"],
@@ -712,6 +720,13 @@ function readInput() {
   input.hands =
     match.field.duel &&
     (!!controllerState.held.through || keys.has("KeyH") || !!touch.held.hands);
+  input.keeperRush =
+    !!match.field.keeper &&
+    !match.field.duel &&
+    (!!controllerState.held.through ||
+      keys.has("KeyR") ||
+      !!touch.held.keeperRush) &&
+    possessionTeam(match) !== (online.active ? online.team : 0);
   return input;
 }
 function step(dt) {
@@ -818,6 +833,14 @@ function updateHUD() {
   if (touch.variant === "altinha")
     document.querySelector(".quick-controls").innerHTML = keyboardHints;
   const attacking = possessionTeam(match) === (online.active ? online.team : 0);
+  const keeperHolding = !!match.players[match.selected]?.goalkeeping?.holding;
+  document.querySelector(
+    '[data-touch="pass"][data-possession="attack"]',
+  ).textContent = keeperHolding ? "Lançar mão" : "Passe";
+  document.querySelector('[data-touch="shoot"]').textContent = keeperHolding
+    ? "Chutão"
+    : "Chute";
+
   if (touch.attacking !== attacking || touch.variant !== match.variant) {
     touch.variant = match.variant;
     touch.resetActions();
@@ -828,6 +851,8 @@ function updateHUD() {
   }
   document.querySelector('[data-touch="hands"]').hidden =
     !match.field.duel || match.ball.owner === match.selected;
+  document.querySelector('[data-touch="keeperRush"]').hidden =
+    attacking || !match.field.keeper || !!match.field.duel;
   if (match.field.duel)
     for (const action of [
       "switch",
@@ -968,7 +993,7 @@ let last = performance.now(),
   fpsTime = 0;
 function frame(now) {
   pollController(now);
-  let rawElapsed = (now - last) / 1000;
+  let rawElapsed = Math.max(0, (now - last) / 1000);
   let elapsed = Math.min(rawElapsed, 0.08);
   last = now;
   if (now >= manualUntil) {
@@ -1021,7 +1046,7 @@ function pollController(now) {
     hints.innerHTML =
       kind === "keyboard"
         ? keyboardHints
-        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Andar / proteger</span><span><kbd>LB + X</kbd> Cavadinha</span><span><kbd>RB</kbd> 2º defensor</span><span><kbd>Y</kbd> Mãos (gol a gol)</span>";
+        : "<span><kbd>LS</kbd> Mover</span><span><kbd>A</kbd> Passe</span><span><kbd>X</kbd> Chute</span><span><kbd>B</kbd> Passe alto</span><span><kbd>Y</kbd> Profundidade / goleiro</span><span><kbd>LB</kbd> Trocar</span><span><kbd>RT</kbd> Correr</span><span><kbd>LT</kbd> Andar / proteger</span><span><kbd>LB + X</kbd> Cavadinha</span><span><kbd>RB</kbd> 2º defensor</span><span><kbd>Y</kbd> Mãos (gol a gol)</span>";
   }
   if (
     state.disconnected &&
@@ -1128,10 +1153,7 @@ function pollController(now) {
     if (
       pressed[type] &&
       !(match.field.duel && type !== "shoot") &&
-      (!defending ||
-        match.field.duel ||
-        type === "pass" ||
-        type === "through") &&
+      (!defending || match.field.duel || type === "pass") &&
       gameAction("beginAction", type, readInput())
     ) {
       shotStartedAt = performance.now();

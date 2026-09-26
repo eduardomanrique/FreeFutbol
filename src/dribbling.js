@@ -1,6 +1,7 @@
 import { motionAction } from "./action-state.js";
 import { rollingResistance } from "./surfaces.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
+import { planTurn } from "./turning.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const length = Math.hypot;
 export const DRIBBLE = {
@@ -22,6 +23,9 @@ export function touchRhythm(speed, sprint = false) {
   };
 }
 export function guideDribbler(p, b, vx, vz) {
+  const turnPlan = planTurn(p, b, vx, vz);
+  vx = turnPlan.x;
+  vz = turnPlan.z;
   const speed = length(p.vx, p.vz),
     requested = length(vx, vz),
     distance = length(b.x - p.x, b.z - p.z);
@@ -49,6 +53,24 @@ export function guideDribbler(p, b, vx, vz) {
     turn < 0.75 ||
     (stopping && distance > 0.6);
   p.dribbleIntent = { x: vx, z: vz };
+  if (p.turnAction?.phase === "approach") {
+    const tx = future.x - p.x,
+      tz = future.z - p.z;
+    const d = length(tx, tz);
+    const chaseSpeed = Math.max(speed, requested);
+    p.dribbleState = {
+      mode: "recover",
+      distance,
+      ahead,
+      lateral,
+      pursuingTouch: true,
+    };
+    return { x: (tx / (d || 1)) * chaseSpeed, z: (tz / (d || 1)) * chaseSpeed };
+  }
+  if (p.turnAction?.phase === "settle") {
+    p.dribbleState = { mode: "turn", distance, ahead, lateral };
+    return { x: p.vx * 0.15, z: p.vz * 0.15 };
+  }
   if (p.shield && !motionAction(p)) {
     const sh = p.shield;
     p.dribbleState = {
@@ -221,10 +243,11 @@ export function dribbleImpulse(p, b) {
     previousSpeed > 2
   ) {
     // Redirect at actual contact, retaining the preceding touch's travel length.
-    const launch =
+    let launch =
       previousSpeed *
       (0.98 + 0.02 * clamp(directionDot, 0, 1)) *
       (p.sprintRequested ? 1 - 0.35 * (1 - directionDot) : 1);
+    if (p.turnAction) launch = Math.min(launch, Math.max(3, speed + 2));
     return {
       vx: (intent.x / requested) * launch,
       vz: (intent.z / requested) * launch,
@@ -259,13 +282,15 @@ export function dribbleImpulse(p, b) {
     };
   }
   if (requested < 0.1) {
+    if (p.ballMotion?.style === "sole-stop")
+      return { vx: 0, vz: 0, interval: 0.2, kind: "stop", lead: 0 };
     if (speed < 0.8)
       return { vx: 0, vz: 0, interval: 0.2, kind: "stop", lead: 0 };
     // Place the ball beyond the body's predicted braking point, rather than
     // pinning it under a runner who still has forward momentum.
     const hard = b.surface === "court" || b.surface === "street";
     const brakingDistance =
-      (speed * speed) / (2 * (b.surface === "sand" ? 9 : hard ? 5.5 : 7));
+      (speed * speed) / (2 * (b.surface === "sand" ? 7.5 : hard ? 5.5 : 7));
     const dx = p.vx / speed,
       dz = p.vz / speed;
     const travel = Math.max(

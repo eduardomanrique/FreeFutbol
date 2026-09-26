@@ -68,3 +68,81 @@ test("strong released shot has a longer preparation step than a light shot", () 
   assert.ok(results[1].duration > results[0].duration);
   assert.ok(results[1].reach > results[0].reach + 0.05);
 });
+test("moving shots retain momentum through support and contact, then brake after landing", () => {
+  for (const input of [
+    { x: 0.3, jockey: true },
+    { x: 1 },
+    { x: 1, sprint: true },
+  ]) {
+    const { m, p } = solo();
+    for (let i = 0; i < 80; i++) m.update(1 / 120, input);
+    m.beginAction("shoot", input);
+    m.releaseAction(0.8);
+    const approachSpeed = Math.hypot(p.vx, p.vz);
+    let minSpeed = approachSpeed,
+      landingSpeed = 0,
+      contact = false;
+    for (let i = 0; i < 360; i++) {
+      const active = !!p.movingStrike;
+      m.update(1 / 120, {});
+      if (active && p.movingStrike)
+        minSpeed = Math.min(minSpeed, Math.hypot(p.vx, p.vz));
+      if (p.movingStrike?.stage === "follow")
+        assert.ok(
+          Math.abs(p.locomotion.heading - p.movingStrike.heading) < 0.2,
+          "no defensive turn during follow-through",
+        );
+      contact ||= !!m.lastShot;
+      if (p.locomotion.lastMovingStrike) {
+        landingSpeed = Math.hypot(p.vx, p.vz);
+        break;
+      }
+    }
+    assert.ok(contact, "actual ball contact");
+    assert.ok(
+      landingSpeed > 0,
+      `kick foot lands ${JSON.stringify(input)} ${JSON.stringify(m.lastShot)}`,
+    );
+    assert.ok(
+      minSpeed >= approachSpeed * 0.93,
+      `${minSpeed}/${approachSpeed}: no stop before landing`,
+    );
+    assert.ok(minSpeed < approachSpeed * 0.99, "small support deceleration");
+    for (let i = 0; i < 90; i++) m.update(1 / 120, {});
+    assert.ok(
+      Math.hypot(p.vx, p.vz) < landingSpeed * 0.6,
+      "normal braking after landing",
+    );
+    m.physics.dispose();
+  }
+});
+test("placed shots open the kicking foot outwards and recover after medial contact", () => {
+  for (const footedness of ["right", "left"]) {
+    const { m, p } = solo();
+    p.footedness = footedness;
+    m.beginAction("shoot", { x: 1 });
+    m.releaseAction(0.55, true);
+    let opened = false,
+      followed = false;
+    for (let i = 0; i < 300; i++) {
+      m.update(1 / 120, {});
+      const motion = p.ballMotion;
+      if (motion?.kind !== "strike") continue;
+      assert.equal(motion.finesse, true);
+      const f = p.locomotion.feet[motion.foot];
+      const angle = Math.atan2(
+        Math.sin(f.heading - p.locomotion.heading),
+        Math.cos(f.heading - p.locomotion.heading),
+      );
+      if (Math.abs(angle) > 1) {
+        opened = true;
+        assert.equal(Math.sign(angle), f.side);
+      }
+      if (motion.hit) followed = true;
+    }
+    assert.ok(opened && followed, footedness);
+    assert.equal(m.lastShot.finesse, true);
+    assert.equal(m.lastShot.foot, footedness === "right" ? 0 : 1);
+    m.physics.dispose();
+  }
+});

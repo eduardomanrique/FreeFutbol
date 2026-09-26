@@ -568,3 +568,26 @@ test("controlled A owns reception while a closer AI partner opens a passing lane
     m.physics.dispose();
   }
 });
+test("footvolley turns toward travel after its opening steps, and keeps looking at the ball", () => {
+  for (const sprint of [false, true]) {
+    const m = setup();
+    m.footvolley.phase = "rally";
+    m.footvolley.lastTeam = 1;
+    m.footvolley.humans = [true, true, true, true];
+    const p = m.players[0];
+    Object.assign(p, { x: -5, z: -1, dx: 1, dz: 0 });
+    initLocomotion(p);
+    Object.assign(m.ball, { x: 4, z: 2, y: 20, vy: 0, vx: 0, vz: 0 });
+    m.volleyInputs = [{ x: -1, sprint }, {}, {}, {}];
+    for (let i = 0; i < 170; i++) m.update(1 / 120, { x: -1, sprint });
+    const target = -Math.PI / 2;
+    assert.ok(Math.abs(p.ballLookYaw) > 0.5);
+    const error = Math.atan2(
+      Math.sin(p.locomotion.heading - target),
+      Math.cos(p.locomotion.heading - target),
+    );
+    assert.ok(Math.abs(error) < 0.3);
+    assert.ok(p.vx < -0.3, "keeps travelling in the requested direction");
+    m.physics.dispose();
+  }
+});

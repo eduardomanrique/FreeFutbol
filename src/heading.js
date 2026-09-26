@@ -1,11 +1,20 @@
 import { stepBallMotion } from "./ball-physics.js";
+import { ease } from "./movement-phases.js";
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const HEAD_HEIGHT = 1.76;
+// Redirect the arriving ball with a modest neck/body impulse, not shot power.
+export function headerSpeed(incomingSpeed, power, shooting = true) {
+  return clamp(
+    incomingSpeed * (shooting ? 0.78 : 0.62) + 1.8 + clamp(power, 0, 1) * 2.2,
+    2,
+    shooting ? 22 : 17,
+  );
+}
 export function headPosition(p) {
   const heading = p.locomotion?.heading || 0;
   return {
     x: p.x + Math.sin(heading) * 0.1,
-    y: HEAD_HEIGHT + (p.header?.height || 0),
+    y: HEAD_HEIGHT + (p.header?.height || 0) - (p.header?.crouch || 0),
     z: p.z + Math.cos(heading) * 0.1,
   };
 }
@@ -19,7 +28,7 @@ export function planHeader(p, ball, horizon = 0.9) {
     const height = clamp(future.y - HEAD_HEIGHT, 0, 0.62);
     // Jump reaches the contact height near its apex. Leave time to load.
     const jumpTime = Math.sqrt((2 * height) / 9.81);
-    if (time < jumpTime + 0.07) continue;
+    if (time < jumpTime + 0.14) continue;
     const distance = Math.hypot(
       future.x - p.x - p.vx * time * 0.35,
       future.z - p.z - p.vz * time * 0.35,
@@ -52,18 +61,31 @@ export function stepHeader(p, ball, action, time, dt, horizon = 0.9) {
   const h = p.header;
   if (!h) return;
   h.previousHead = headPosition(p);
+  const preparation = Math.max(0.08, h.launchAt - h.startedAt);
+  const loadPhase = clamp((time - h.startedAt) / preparation, 0, 1);
+  h.load = time < h.launchAt ? Math.sin(Math.PI * loadPhase) : 0;
+  h.crouch = 0.19 * h.load;
+  h.armDrive =
+    time < h.launchAt
+      ? -h.load
+      : Math.sin(Math.PI * clamp((time - h.launchAt) / 0.5, 0, 1));
   if (time >= h.launchAt && h.jumpVelocity > 0) {
     const t = time - h.launchAt;
     h.height = Math.max(0, h.jumpVelocity * t - 4.905 * t * t);
     h.mode = h.height > 0 ? "airborne" : "recover";
+    const landed = time - h.launchAt - (2 * h.jumpVelocity) / 9.81;
+    if (landed >= 0)
+      h.crouch = 0.15 * ease(landed / 0.05) * (1 - ease((landed - 0.06) / 0.2));
   }
   if (time > h.contactAt + 0.55 && h.height === 0) {
     p.header = null;
     return;
   }
-  h.fold = h.hit
-    ? 0.3 * Math.max(0, 1 - (time - h.hitAt) / 0.45)
-    : -0.12 * Math.min(1, (time - h.startedAt) / 0.12);
+  h.fold =
+    h.load * 0.28 +
+    (h.hit
+      ? 0.3 * Math.max(0, 1 - (time - h.hitAt) / 0.45)
+      : -0.1 * Math.min(1, (time - h.startedAt) / 0.12) * (1 - h.load));
 }
 export function headerContact(p, ball, dt) {
   const h = p.header;

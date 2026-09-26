@@ -1,3 +1,4 @@
+import { defensiveFacing } from "./defensive-facing.js";
 import { predictLanding } from "./ball-landing.js";
 import { stepBallMotion } from "./ball-physics.js";
 import { initLocomotion, stepLocomotion } from "./locomotion.js";
@@ -548,16 +549,13 @@ export function updateFootvolley(m, dt, input = {}) {
       vx = vz = 0;
       p.vx = p.vz = 0;
     }
-    const mate = m.players[p.id ^ 1];
-    const exchanging =
-      f.lastTeam === p.team || a?.type === "pass" || a?.type === "lob";
-    p.faceHeading =
-      exchanging &&
-      Math.hypot(vx, vz) < 0.65 &&
-      !divePose?.dive &&
-      divePose?.jumpAt == null
-        ? Math.atan2(mate.x - p.x, mate.z - p.z)
-        : undefined;
+    p.faceHeading = defensiveFacing(p, m.ball, dt, {
+      enabled:
+        (!a || a.hitAt != null) && !divePose?.dive && divePose?.jumpAt == null,
+      sprint: human && !!command.sprint && !command.jockey,
+      x: vx,
+      z: vz,
+    });
     p.walkRequested =
       (human && !!command.jockey) ||
       (a?.type === "pass" && !a.dive && Math.hypot(vx, vz) < 4.2);

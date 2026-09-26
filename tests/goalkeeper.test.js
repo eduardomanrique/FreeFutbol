@@ -109,3 +109,84 @@ test("good close chances beat the keeper while weak central shots remain defenda
   assert.ok(goals >= 4, `${goals}/6 well-placed close shots converted`);
   assert.ok(chance(12, 0.35, 0).save);
 });
+test("holding keeper rush closes down the ball and release returns toward goal", () => {
+  const { m, p } = setup(0, 0.11, 0, 20, 0);
+  Object.assign(m.ball, { x: -18, z: 0, vx: 0, vz: 0, vy: 0, lastTeam: 1 });
+  const start = p.x;
+  for (let i = 0; i < 120; i++) m.update(1 / 120, { keeperRush: true });
+  assert.ok(p.goalkeeping.rushing);
+  assert.ok(p.x > start + 3);
+  const advanced = p.x;
+  for (let i = 0; i < 200; i++) m.update(1 / 120, {});
+  assert.equal(p.goalkeeping.rushing, false);
+  assert.ok(p.x < advanced);
+  m.physics.dispose();
+});
+test("human keeper keeps a catch, takes control and releases only on throw or punt command", () => {
+  for (const action of ["pass", "shoot"]) {
+    const { m, p } = setup(0, 1.1, 10, 38, 0);
+    for (let i = 0; i < 240 && !m.lastSave; i++) m.update(1 / 120, {});
+    assert.equal(m.lastSave?.kind, "catch");
+    assert.equal(m.selected, p.id);
+    for (let i = 0; i < 600; i++) m.update(1 / 120, {});
+    assert.equal(m.ball.owner, p.id);
+    assert.ok(p.goalkeeping.holding);
+    assert.equal(m.lastPass, null);
+    assert.equal(m.beginAction(action, { x: 1 }), true);
+    assert.equal(m.releaseAction(0.65), true);
+    for (let i = 0; i < 100 && !m.lastPass; i++) m.update(1 / 120, {});
+    assert.equal(
+      m.lastPass?.style,
+      action === "pass" ? "keeper-throw" : "keeper-punt",
+    );
+    assert.equal(p.goalkeeping.holding, false);
+    assert.equal(m.ball.owner, null);
+    assert.ok(m.ball.vx > 0, `${action}: ${JSON.stringify(m.ball)}`);
+    assert.notEqual(m.selected, p.id);
+    m.physics.dispose();
+  }
+});
+test("carried ball stays inside each own penalty area and sand uses a full-width 9m area", async () => {
+  const { inKeeperArea, constrainKeeperCarry } =
+    await import("../src/keeper-possession.js");
+  const { modeConfig } = await import("../src/modes.js");
+  for (const variant of ["match", "sand", "court"])
+    for (const team of [0, 1]) {
+      const field = modeConfig(variant),
+        p = {
+          id: 0,
+          team,
+          x: 0,
+          z: field.halfWidth,
+          vx: 10,
+          vz: 10,
+          dx: 1,
+          dz: 0,
+        };
+      initLocomotion(p);
+      constrainKeeperCarry(p, field);
+      assert.ok(inKeeperArea(field, team, p));
+      const dir = team === 0 ? 1 : -1;
+      assert.ok(inKeeperArea(field, team, { x: p.x + dir * 0.7, z: p.z }));
+    }
+  const sand = modeConfig("sand");
+  assert.ok(
+    inKeeperArea(sand, 0, {
+      x: -sand.halfLength + 8.99,
+      z: sand.halfWidth - 0.1,
+    }),
+  );
+  assert.ok(!inKeeperArea(sand, 0, { x: -sand.halfLength + 9.01, z: 0 }));
+});
+test("manual keeper movement cannot take the held ball outside the area", async () => {
+  const { inKeeperArea } = await import("../src/keeper-possession.js");
+  const { m, p } = setup(0, 1.1, 10, 38, 0);
+  for (let i = 0; i < 240 && !m.lastSave; i++) m.update(1 / 120, {});
+  for (let i = 0; i < 900; i++) {
+    m.update(1 / 120, { x: 1, z: 1, sprint: true });
+    assert.equal(m.ball.owner, p.id);
+    assert.ok(inKeeperArea(m.field, p.team, m.ball), `${m.ball.x},${m.ball.z}`);
+  }
+  assert.ok(p.x > -40, "player can move while holding");
+  m.physics.dispose();
+});

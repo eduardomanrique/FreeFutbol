@@ -52,9 +52,19 @@ export function shotPrecision(
   );
   return { index, spread: (1 - index) * (0.7 + distance * 0.08) };
 }
-// Total cone aperture: 120° up to 6m, tapering to 20° at 22m.
-export function shortPassHalfAngle(distance) {
-  return ((60 - 50 * clamp((distance - 6) / 16, 0, 1)) * Math.PI) / 180;
+// Total aperture depends on charge, independently of teammate distance.
+export function passHalfAngle(power) {
+  return ((power <= 1 / 3 ? 90 : power <= 2 / 3 ? 45 : 20) * Math.PI) / 180;
+}
+export function unassistedPassTarget(p, aim, power) {
+  const distance = 4 + 24 * power;
+  return {
+    id: null,
+    x: p.x + aim.x * distance,
+    z: p.z + aim.z * distance,
+    vx: 0,
+    vz: 0,
+  };
 }
 export function selectPassTarget(players, p, aim, power = 1, type = "pass") {
   const candidates = players.filter((q) => q.team === p.team && q.id !== p.id);
@@ -72,17 +82,13 @@ export function selectPassTarget(players, p, aim, power = 1, type = "pass") {
       };
     })
     .sort((a, b) => a.cost - b.cost);
-  if (type === "pass" && power <= 0.4) {
-    // Nearby options tolerate lateral aim; longer passes need tighter alignment.
+  if (type === "pass") {
+    // Within the requested cone, distance wins over precise alignment.
     const inCone = ranked.filter(
-      ({ d, alignment }) => alignment >= Math.cos(shortPassHalfAngle(d)),
+      ({ alignment }) => alignment + 1e-9 >= Math.cos(passHalfAngle(power)),
     );
-    const short = inCone.filter(({ d }) => d <= 22);
-    short.sort(
-      (a, b) => a.d + (1 - a.alignment) * 5 - (b.d + (1 - b.alignment) * 5),
-    );
-    if (short.length) return short[0].q;
-    if (inCone.length) return inCone[0].q;
+    inCone.sort((a, b) => a.d - b.d || b.alignment - a.alignment);
+    return inCone[0]?.q;
   }
   return ranked[0]?.q;
 }
@@ -140,6 +146,16 @@ export function footBallDistance(foot, b, previous = foot) {
 // Earliest reachable point on the incoming trajectory, followed by an arrival
 // velocity. Uses stance acceleration in locomotion; never moves player or ball.
 export function actionApproach(p, ball, action) {
+  if (p.movingStrike) {
+    if (p.movingStrike.stage !== "approach") return { x: p.vx, z: p.vz };
+    const future = { ...ball };
+    for (let t = 0; t < 0.35; t += 1 / 120) stepBallMotion(future, 1 / 120);
+    const speed = Math.hypot(p.vx, p.vz);
+    const dx = future.x - p.x,
+      dz = future.z - p.z,
+      d = Math.hypot(dx, dz);
+    return { x: (dx / (d || 1)) * speed, z: (dz / (d || 1)) * speed };
+  }
   const incoming = Math.hypot(ball.vx, ball.vz);
   const forward =
     action.firstTime && !action.scramble && incoming > 0.5

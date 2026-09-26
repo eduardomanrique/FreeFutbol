@@ -66,7 +66,8 @@ test("sand has a keeper and four outfield players per team and short rolling ran
     surface: "sand",
   };
   for (let i = 0; i < 240; i++) stepBallMotion(b, 1 / 120);
-  assert.ok(b.x < 2.5);
+  // Slightly freer sand: this 8 m/s ground ball travels about 3 m.
+  assert.ok(b.x > 2.8 && b.x < 3.3);
   assert.ok(Math.abs(b.vx) < 0.01);
   m.physics.dispose();
 });

@@ -505,6 +505,15 @@ test("incoming passes are struck first time without possession or a trapping imp
     for (const offset of [0, 0.35]) {
       const m = setup(),
         p = m.players[9];
+      // This test needs an eligible receiver inside the new forward cone.
+      Object.assign(m.players[10], {
+        x: p.x + 10,
+        z: p.z,
+        vx: 0,
+        vz: 0,
+        think: 99,
+      });
+      initLocomotion(m.players[10]);
       Object.assign(m.ball, {
         owner: null,
         x: p.x + 4,
@@ -705,7 +714,7 @@ test("short taps prefer a nearby teammate in the aim cone while strong passes ke
   for (const team of [0, 1]) {
     const dir = team ? -1 : 1;
     const p = { id: 0, team, x: 0, z: 0 };
-    const near = { id: 1, team, x: dir * 7, z: 3 };
+    const near = { id: 1, team, x: dir * 7, z: 4 };
     const far = { id: 2, team, x: dir * 25, z: 0 };
     const wrong = { id: 3, team, x: -dir * 2, z: 0 };
     const players = [p, near, far, wrong];
@@ -717,33 +726,39 @@ test("short taps prefer a nearby teammate in the aim cone while strong passes ke
   }
 });
 
-test("short-pass cone tapers from 120 to 20 total degrees with distance", async () => {
-  const { selectPassTarget, shortPassHalfAngle } =
+test("pass cone is 180, 90 or 40 degrees by power, choosing nearest inside", async () => {
+  const { selectPassTarget, passHalfAngle } =
     await import("../src/ball-actions.js");
   const p = { id: 0, team: 0, x: 0, z: 0 },
     far = { id: 2, team: 0, x: 30, z: 0 };
-  for (const [distance, halfAngle] of [
-    [5, 60],
-    [14, 35],
-    [22, 10],
+  for (const [power, half] of [
+    [0, 90],
+    [1 / 3, 90],
+    [0.334, 45],
+    [2 / 3, 45],
+    [0.667, 20],
+    [1, 20],
   ]) {
-    assert.ok(
-      Math.abs((shortPassHalfAngle(distance) * 180) / Math.PI - halfAngle) <
-        1e-8,
-    );
-    for (const offset of [-0.1, 0.1]) {
-      const angle = ((halfAngle + offset) * Math.PI) / 180;
-      const near = {
-        id: 1,
-        team: 0,
-        x: distance * Math.cos(angle),
-        z: distance * Math.sin(angle),
-      };
-      assert.equal(
-        selectPassTarget([p, near, far], p, { x: 1, z: 0 }, 0.1).id,
-        offset < 0 ? 1 : 2,
-      );
-    }
+    assert.ok(Math.abs((passHalfAngle(power) * 180) / Math.PI - half) < 1e-8);
+    for (const distance of [4, 14, 25])
+      for (const offset of [-0.1, 0, 0.1]) {
+        const angle = ((half + offset) * Math.PI) / 180;
+        const near = {
+          id: 1,
+          team: 0,
+          x: distance * Math.cos(angle),
+          z: distance * Math.sin(angle),
+        };
+        assert.equal(
+          selectPassTarget([p, near, far], p, { x: 1, z: 0 }, power).id,
+          offset <= 0 ? 1 : 2,
+        );
+        if (offset > 0)
+          assert.equal(
+            selectPassTarget([p, near], p, { x: 1, z: 0 }, power),
+            undefined,
+          );
+      }
   }
 });
 
@@ -755,4 +770,26 @@ test("ground passes have a speed ceiling even for distant targets on sand", () =
       assert.ok(pass.speed <= 26);
     }
   }
+});
+
+test("nearest in cone wins over alignment even on a strong pass", async () => {
+  const { selectPassTarget } = await import("../src/ball-actions.js");
+  const p = { id: 0, team: 0, x: 0, z: 0 },
+    near = { id: 1, team: 0, x: 5, z: 1 },
+    far = { id: 2, team: 0, x: 5.5, z: 0 };
+  for (const power of [0.1, 0.5, 1])
+    assert.equal(
+      selectPassTarget([p, far, near], p, { x: 1, z: 0 }, power).id,
+      1,
+    );
+});
+test("a pass without a teammate inside its cone travels unassisted forward", () => {
+  const m = setup();
+  m.beginAction("pass", { x: 1, z: 0 });
+  m.releaseAction(0.5);
+  contact(m);
+  assert.equal(m.lastPass.target, null);
+  assert.ok(m.ball.vx > 0);
+  assert.equal(m.selected, 9);
+  m.physics.dispose();
 });

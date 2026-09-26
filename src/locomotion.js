@@ -1,5 +1,6 @@
 import { motionAction } from "./action-state.js";
 import { stepBodyExpression } from "./body-expression.js";
+import { preferredFoot as dominantFoot, FOOTEDNESS } from "./footedness.js";
 // Reduced-order character physics, in metres / seconds / newtons.
 // Only feet in contact may accelerate the centre of mass horizontally.
 const G = 9.81,
@@ -18,6 +19,7 @@ function positionBeside(p, side, heading, forward = 0) {
   };
 }
 export function initLocomotion(p) {
+  if (!FOOTEDNESS.includes(p.footedness)) p.footedness = "right";
   const heading = Math.atan2(p.dx ?? 0, p.dz ?? 1),
     scale = athleteScale(p.id);
   const feet = [-1, 1].map((side) => {
@@ -88,20 +90,33 @@ function lift(p, foot, duration, settle = false) {
 // support. A foot that has just landed cannot instantly strike again.
 export function ballMotionDuration(p, kind, power = 0) {
   const speed = Math.hypot(p.vx, p.vz);
+  if (kind === "strike" && p.movingStrike) return 0.27 - 0.04 * power;
   return kind === "dribble"
     ? clamp(0.24 - speed * 0.009, 0.14, 0.24)
     : p.ballAction?.quickTouch
       ? 0.16
       : clamp(0.34 + 0.05 * power - speed * 0.026, 0.16, 0.4);
 }
+export const ballContactPhase = (p, kind, power = 0) =>
+  kind === "strike" && p.movingStrike ? 0.4 - 0.08 * power : 0.62;
 export const strikePlantDuration = (p) =>
-  clamp(
-    0.18 +
-      (p.ballAction?.type === "shoot" ? 0.07 * (p.ballAction.power || 0) : 0) -
-      Math.hypot(p.vx, p.vz) * 0.006,
-    0.12,
-    0.25,
-  );
+  p.movingStrike
+    ? clamp(
+        0.22 +
+          0.1 * (p.ballAction?.power || 0) -
+          Math.hypot(p.vx, p.vz) * 0.006,
+        0.18,
+        0.32,
+      )
+    : clamp(
+        0.18 +
+          (p.ballAction?.type === "shoot"
+            ? 0.07 * (p.ballAction.power || 0)
+            : 0) -
+          Math.hypot(p.vx, p.vz) * 0.006,
+        0.12,
+        0.25,
+      );
 export function startBallMotion(
   p,
   target,
@@ -115,21 +130,24 @@ export function startBallMotion(
     let plant = p.strikePlant;
     if (!plant) {
       // Standing is not an exception: reuse an already valid grounded support.
-      const ready = l.feet
-        .map((f, i) => ({ f, i }))
-        .filter(({ f, i }) => {
-          const d = Math.hypot(f.x - target.x, f.z - target.z),
-            other = l.feet[1 - i];
-          return (
-            f.contact &&
-            !f.special &&
-            d >= 0.16 &&
-            d <= 0.65 &&
-            !other.special &&
-            (!other.contact || other.age >= 0.075)
-          );
-        })
-        .sort((a, b) => a.f.age - b.f.age)[0];
+      const ready =
+        !p.movingStrike &&
+        l.feet
+          .map((f, i) => ({ f, i }))
+          .filter(({ f, i }) => {
+            const d = Math.hypot(f.x - target.x, f.z - target.z),
+              other = l.feet[1 - i];
+            return (
+              (p.footedness === "both" || i !== dominantFoot(p)) &&
+              f.contact &&
+              !f.special &&
+              d >= 0.16 &&
+              d <= 0.65 &&
+              !other.special &&
+              (!other.contact || other.age >= 0.075)
+            );
+          })
+          .sort((a, b) => a.f.age - b.f.age)[0];
       if (ready) {
         ready.f.special = "plant";
         p.strikePlant = plant = {
@@ -143,7 +161,12 @@ export function startBallMotion(
       // Prefer the left support/right strike, but use the current stance when
       // the other leg is already airborne. Never teleport a planted shoe.
       const support = l.feet.findIndex((f) => !f.contact && !f.special);
-      const index = support >= 0 ? support : 1;
+      const index =
+        p.footedness === "both"
+          ? support >= 0
+            ? support
+            : 1
+          : 1 - dominantFoot(p);
       const foot = l.feet[index],
         other = l.feet[1 - index];
       if (!other.contact || foot.special) return false;
@@ -154,17 +177,22 @@ export function startBallMotion(
         x: target.x + Math.cos(l.heading) * offset,
         z: target.z - Math.sin(l.heading) * offset,
       };
+      if (p.movingStrike) {
+        goal.x += Math.sin(l.heading) * 0.04;
+        goal.z += Math.cos(l.heading) * 0.04;
+      }
       const duration = strikePlantDuration(p);
       if (
         Math.hypot(
           goal.x - p.x - p.vx * duration,
           goal.z - p.z - p.vz * duration,
-        ) > (Math.hypot(p.vx, p.vz) > 2 ? 0.78 : 1.05)
+        ) > (p.movingStrike || Math.hypot(p.vx, p.vz) > 2 ? 0.78 : 1.05)
       )
         return false;
       lift(p, foot, duration);
       foot.special = "plant";
       p.strikePlant = plant = { foot: index, target: goal };
+      if (p.movingStrike) p.movingStrike.stage = "plant";
       return false;
     }
     const support = l.feet[plant.foot];
@@ -193,8 +221,14 @@ export function startBallMotion(
       target: { ...target },
       hit: false,
       style: p.ballAction?.style?.name,
+      finesse:
+        p.ballAction?.type === "shoot" &&
+        !!p.ballAction.finesse &&
+        !p.ballAction.chip,
       heading: l.heading,
+      contactPhase: ballContactPhase(p, kind, power),
     };
+    if (p.movingStrike) p.movingStrike.stage = "strike";
     return true;
   }
   const eligible = (f) =>
@@ -240,6 +274,10 @@ export function startBallMotion(
     target: { ...target },
     hit: false,
     style: p.ballAction?.style?.name,
+    finesse:
+      p.ballAction?.type === "shoot" &&
+      !!p.ballAction.finesse &&
+      !p.ballAction.chip,
     heading: l.heading,
   };
   return true;
@@ -259,6 +297,7 @@ export function stepLocomotion(
     p.strikePlant = null;
   }
   l.time += dt;
+  if (p.movingStrike && !p.ballAction && !p.ballMotion) p.movingStrike = null;
   l.impact = Math.max(0, (l.impact || 0) - dt * 2.5);
   l.preparation =
     (l.preparation || 0) +
@@ -280,7 +319,14 @@ export function stepLocomotion(
     turnSpeed > 0.2 && speed > 0.7
       ? (p.vx * turnIntent.x + p.vz * turnIntent.z) / (speed * turnSpeed)
       : 1;
-  const cutDemand = clamp((0.7 - turnDot) / 1.7, 0, 1) * clamp(speed / 3, 0, 1);
+  const cutDemand = Math.max(
+    clamp((0.7 - turnDot) / 1.7, 0, 1) * clamp(speed / 3, 0, 1),
+    p.turnAction &&
+      p.turnAction.phase !== "approach" &&
+      (p.turnAction.contactAt == null || l.time - p.turnAction.contactAt < 0.3)
+      ? 0.45 * Math.min(1, Math.abs(p.turnAction.delta) / (Math.PI / 2))
+      : 0,
+  );
   l.cutBlend =
     (l.cutBlend || 0) +
     (cutDemand - (l.cutBlend || 0)) *
@@ -291,6 +337,7 @@ export function stepLocomotion(
   const running = speed > 3.0 && !agile;
   const cruising = running && p.sprintRequested === false && !motionAction(p);
   const interval =
+    (p.turnAction?.phase === "settle" ? 0.62 : 1) *
     (agile ? 0.73 : 1) *
     clamp(0.39 - speed * 0.022, 0.205, 0.39) *
     (1 + 0.3 * preparation) *
@@ -300,6 +347,7 @@ export function stepLocomotion(
     0.4 +
     (p.ballAction?.type === "shoot" && !p.ballAction.firstTime ? 0.25 : 0.15) *
       preparation;
+  if (p.turnAction?.phase === "settle") l.strideReach *= 0.48;
   const flight = running
     ? cruising
       ? 0.006
@@ -328,7 +376,8 @@ export function stepLocomotion(
   );
   l.yawVelocity += (yawTarget - l.yawVelocity) * (1 - Math.exp(-dt * 14));
   l.heading += l.yawVelocity * dt;
-  const plantKick = speed < 7 && l.feet[0].contact;
+  const kickFoot = dominantFoot(p);
+  const plantKick = speed < 7 && l.feet[1 - kickFoot].contact;
   for (const foot of l.feet) {
     if (foot.special === "windup" && !motionAction(p)) {
       lift(p, foot, 0.2);
@@ -340,10 +389,10 @@ export function stepLocomotion(
     !p.ballMotion &&
     !l.wasKicking &&
     plantKick &&
-    !l.feet[1].special
+    !l.feet[kickFoot].special
   ) {
-    lift(p, l.feet[1], 0.22 + 0.09 * (p.shotPower || 0));
-    l.feet[1].special = "strike";
+    lift(p, l.feet[kickFoot], 0.22 + 0.09 * (p.shotPower || 0));
+    l.feet[kickFoot].special = "strike";
   }
   l.wasKicking = p.kick > 0;
   if (reach && !charging && p.kick <= 0 && !l.feet.some((f) => f.special)) {
@@ -422,7 +471,8 @@ export function stepLocomotion(
     }
     if (foot.special === "ball" && p.ballMotion) {
       const m = p.ballMotion;
-      const contactPhase = 0.62;
+      const contactPhase = m.contactPhase ?? 0.62;
+      const contactHeight = m.style === "sole-stop" ? 0.27 : 0.15;
       if (foot.phase <= contactPhase) {
         const t = smooth(foot.phase / contactPhase);
         foot.x = foot.from.x + (m.target.x - foot.from.x) * t;
@@ -434,7 +484,7 @@ export function stepLocomotion(
         }
         foot.y =
           foot.from.y +
-          (0.15 - foot.from.y) * t +
+          (contactHeight - foot.from.y) * t +
           Math.sin(Math.PI * t) *
             (m.kind === "dribble" ? 0.06 : 0.18 + 0.12 * m.power);
       } else {
@@ -458,11 +508,22 @@ export function stepLocomotion(
           (rest.z - m.target.z) * t +
           Math.cos(m.heading) * extension;
         foot.y =
-          0.15 +
+          contactHeight +
           Math.sin(Math.PI * t) *
             (m.kind === "dribble" ? 0.07 : 0.22 + 0.2 * m.power);
       }
-      foot.heading = l.heading;
+      const opening = m.finesse
+        ? smooth(clamp(foot.phase / (contactPhase * 0.8), 0, 1)) *
+          (1 -
+            smooth(
+              clamp(
+                (foot.phase - contactPhase - 0.08) / (1 - contactPhase - 0.08),
+                0,
+                1,
+              ),
+            ))
+        : 0;
+      foot.heading = l.heading + foot.side * opening * 1.3;
       if (foot.phase >= 1) {
         foot.special = null;
         foot.contact = true;
@@ -470,6 +531,14 @@ export function stepLocomotion(
         foot.landings++;
         foot.y = 0.098 * athleteScale(p.id);
         p.ballMotion = null;
+        if (m.kind === "strike" && p.movingStrike) {
+          l.lastMovingStrike = {
+            ...p.movingStrike,
+            landedAt: l.time,
+            hit: m.hit,
+          };
+          p.movingStrike = null;
+        }
       }
       continue;
     }
@@ -617,18 +686,37 @@ export function stepLocomotion(
     contacts.length === 1 && speed > 0.5
       ? clamp(supportSide * 18 - (lateralSpeed - desiredLateral) * 3, -2.2, 2.2)
       : 0;
-  const demandX =
-      (targetX - p.vx) * (agile ? 12 : 7.5) + rightX * balanceAcceleration,
-    demandZ =
-      (targetZ - p.vz) * (agile ? 12 : 7.5) + rightZ * balanceAcceleration;
+  // Preserve forward motion through preparation. A planted support leg absorbs
+  // just 6% of approach speed; ordinary braking resumes after the kick lands.
+  const coasting = p.movingStrike && p.movingStrike.stage !== "approach";
+  let demandX = coasting
+      ? 0
+      : (targetX - p.vx) * (agile ? 12 : 7.5) + rightX * balanceAcceleration,
+    demandZ = coasting
+      ? 0
+      : (targetZ - p.vz) * (agile ? 12 : 7.5) + rightZ * balanceAcceleration;
+  if (p.movingStrike && speed > 0.1) {
+    const along = (demandX * p.vx + demandZ * p.vz) / (speed * speed);
+    demandX -= p.vx * along;
+    demandZ -= p.vz * along;
+  }
   const demand = Math.hypot(demandX, demandZ);
-  l.frictionLimit = MU * normal;
+  const reversalBrake =
+    p.turnAction?.kind === "reverse" &&
+    p.turnAction.phase !== "approach" &&
+    p.vx * Math.sin(p.turnAction.origin) +
+      p.vz * Math.cos(p.turnAction.origin) >
+      0.5;
+  // A firm planted cut has extra grip, but still produces no force in flight.
+  l.frictionLimit = MU * normal * (reversalBrake ? 1.35 : 1);
   // Propulsion tapers with speed; brakes and turns retain their traction limit.
   const gainingSpeed =
     targetX * p.vx + targetZ * p.vz >= 0 && desiredSpeed > speed + 0.1;
   const driveLimit = gainingSpeed
     ? clamp(7.55 + 2.2 * (p.sprintLaunch || 0) - speed * 0.28, 4.5, 9.75)
-    : 12;
+    : reversalBrake
+      ? 16
+      : 12;
   const maxAcceleration = Math.min(l.frictionLimit / MASS, driveLimit);
   const factor = demand > 0 ? Math.min(1, maxAcceleration / demand) : 0;
   l.ax = demandX * factor;
@@ -638,6 +726,30 @@ export function stepLocomotion(
   l.normalForce = normal;
   p.vx += l.ax * dt;
   p.vz += l.az * dt;
+  if (p.movingStrike && speed > 0.1) {
+    const strike = p.movingStrike;
+    let retainedSpeed = speed;
+    if (
+      contacts.length &&
+      (strike.stage === "strike" || strike.stage === "follow")
+    ) {
+      strike.supportSpeed ??= speed;
+      const absorbed = strike.absorbedSpeed || 0;
+      const decrement = Math.min(
+        Math.max(0, strike.supportSpeed * 0.06 - absorbed),
+        ((strike.supportSpeed * 0.06) / 0.14) * dt,
+      );
+      retainedSpeed = Math.max(0, speed - decrement);
+      strike.absorbedSpeed = absorbed + decrement;
+      l.ax -= ((p.vx / speed) * decrement) / dt;
+      l.az -= ((p.vz / speed) * decrement) / dt;
+      l.fx = l.ax * MASS;
+      l.fz = l.az * MASS;
+    }
+    const scale = retainedSpeed / Math.max(0.001, Math.hypot(p.vx, p.vz));
+    p.vx *= scale;
+    p.vz *= scale;
+  }
   p.x += p.vx * dt;
   p.z += p.vz * dt;
   l.vy += (normal / MASS - G) * dt;
@@ -718,6 +830,7 @@ export function locomotionSnapshot(p) {
     support: { x: l.supportX, z: l.supportZ },
     stepCount: l.stepCount,
     preparation: l.preparation || 0,
+    movingStrike: p.movingStrike || null,
     strideInterval: l.strideInterval,
     strideReach: l.strideReach,
     impact: l.impact || 0,

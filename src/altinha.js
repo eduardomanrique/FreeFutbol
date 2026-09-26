@@ -4,6 +4,7 @@ import {
   PICKUPS,
   pickupFoot,
 } from "./altinha-contact.js";
+import { preferredFoot } from "./footedness.js";
 import { guideDribbler, dribbleImpulse } from "./dribbling.js";
 import { rollingResistance } from "./surfaces.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
@@ -199,6 +200,7 @@ function makeAction(m, p, type, input = {}) {
       height = kind === "bicycle" ? 1.5 : 1.02;
       label = kind === "bicycle" ? "BICICLETA" : "CALCANHAR ALTO";
       base = kind === "bicycle" ? 20 : 12;
+      side = preferredFoot(p) === 0 ? -1 : 1;
     }
   }
   return {
@@ -215,7 +217,8 @@ function makeAction(m, p, type, input = {}) {
     player: m.players.indexOf(p),
     target: partner,
     startedAt: m.elapsed,
-    readyAt: m.elapsed + 0.08,
+    readyAt: m.elapsed + (kind === "bicycle" ? 0.24 : 0.08),
+    bicycleContactAt: kind === "bicycle" ? m.elapsed + 0.35 : null,
     expiresAt: m.elapsed + 1.05,
     stage: type === "trick" ? "prepare" : null,
   };
@@ -486,7 +489,7 @@ function contact(m, p, a) {
     ...a,
     contact: point,
     hitAt: m.elapsed,
-    until: m.elapsed + (a.rescue ? 1 : 0.48),
+    until: m.elapsed + (a.kind === "bicycle" ? 1.35 : a.rescue ? 1 : 0.48),
   };
 }
 function readyContact(m, p, a, previous) {

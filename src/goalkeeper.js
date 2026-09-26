@@ -1,3 +1,4 @@
+import { keeperArea } from "./keeper-possession.js";
 import { stepBallMotion } from "./ball-physics.js";
 import { initLocomotion } from "./locomotion.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -27,7 +28,7 @@ export function predictKeeperIntercept(p, b) {
   }
   return null;
 }
-export function keeperControl(p, b, time) {
+export function keeperControl(p, b, time, { rush = false } = {}) {
   const dir = p.team === 0 ? 1 : -1;
   const g = (p.goalkeeping ||= {
     mode: "set",
@@ -37,7 +38,13 @@ export function keeperControl(p, b, time) {
     previousHands: [],
   });
   const fieldLength = p.field?.halfLength ?? 46,
-    areaDepth = Math.min(16.5, fieldLength * 0.35);
+    areaDepth = keeperArea(
+      p.field || { halfLength: fieldLength, halfWidth: 30 },
+    ).depth;
+  const wasRushing = g.rushing;
+  g.rushing = !!rush && !g.holding && g.mode === "set";
+  if (wasRushing && !rush) g.returning = true;
+  if (g.rushing || g.holding) g.returning = false;
   const nearArea =
     (b.x + dir * fieldLength) * dir >= 0 &&
     (b.x + dir * fieldLength) * dir < areaDepth &&
@@ -49,7 +56,7 @@ export function keeperControl(p, b, time) {
     b.lastTeam !== p.team &&
     b.y < 1.2 &&
     nearArea &&
-    Math.hypot(b.x - p.x, b.z - p.z) < 7;
+    Math.hypot(b.x - p.x, b.z - p.z) < (g.rushing ? 1.6 : 7);
   const prediction = predictKeeperIntercept(p, b);
   g.prediction = prediction;
   if (
@@ -92,6 +99,20 @@ export function keeperControl(p, b, time) {
       -G + 0.6,
       G - 0.6,
     );
+  if (Math.hypot(p.x - x, p.z - z) < 0.5) g.returning = false;
+  if (g.rushing && g.mode === "set") {
+    const future = { ...b };
+    for (let t = 0; t < 0.25; t += 1 / 120) stepBallMotion(future, 1 / 120);
+    return {
+      x: clamp(future.x, -L + 0.6, L - 0.6),
+      z: clamp(
+        future.z,
+        -(p.field?.halfWidth ?? 30) + 0.6,
+        (p.field?.halfWidth ?? 30) - 0.6,
+      ),
+      speed: g.smother ? 5 : 7.8,
+    };
+  }
   return {
     x: g.smother
       ? clamp(b.x, -fieldLength + 0.8, fieldLength - 0.8)
@@ -99,13 +120,17 @@ export function keeperControl(p, b, time) {
         ? x
         : p.x,
     z: g.smother ? b.z : g.mode === "set" ? z : p.z,
-    speed: g.holding ? 0 : g.smother ? 6.2 : 3.8,
+    speed: g.holding ? 0 : g.smother ? 6.2 : g.returning ? 6.2 : 3.8,
   };
 }
 export function stepKeeper(p, b, time, dt) {
   const g = p.goalkeeping,
     dir = p.team === 0 ? 1 : -1;
   if (!g) return;
+  if (g.deliveryFollow) {
+    g.deliveryFollow.age += dt;
+    if (g.deliveryFollow.age > 0.85) g.deliveryFollow = null;
+  }
   g.previousHands = g.hands.map((h) => ({ ...h }));
   p.locomotion.heading = (dir * Math.PI) / 2;
   p.dx = dir;
@@ -157,6 +182,28 @@ export function stepKeeper(p, b, time, dt) {
   }
   p.locomotion.lastX = p.x;
   p.locomotion.lastZ = p.z;
+  if (g.holding) {
+    const a = g.distribution,
+      aim = a?.aim || { x: dir, z: 0 };
+    p.locomotion.heading = Math.atan2(aim.x, aim.z);
+    p.dx = aim.x;
+    p.dz = aim.z;
+    const t = a ? clamp(a.age / (a.type === "punt" ? 0.55 : 0.38), 0, 1) : 0;
+    const reach =
+      a?.type === "throw" ? 0.32 + 0.32 * Math.sin((t * Math.PI) / 2) : 0.38;
+    const height =
+      a?.type === "punt"
+        ? 1.22 - 0.65 * t
+        : a?.type === "throw"
+          ? 1.2 + 0.18 * Math.sin(t * Math.PI)
+          : 1.22;
+    g.hands = [-1, 1].map((side) => ({
+      x: p.x + aim.x * reach + aim.z * side * 0.1,
+      y: height,
+      z: p.z + aim.z * reach - aim.x * side * 0.1,
+    }));
+    return;
+  }
   // The same bounded palm targets drive contact tests and rendered arm IK.
   const lateral = -Math.sin(g.roll),
     up = Math.cos(g.roll);
@@ -165,7 +212,7 @@ export function stepKeeper(p, b, time, dt) {
     ? b
     : reaching
       ? g.target
-      : { x: p.x + dir * 0.4, y: g.mode === "recover" ? 0.15 : 1.05, z: p.z };
+      : { x: p.x + dir * 0.42, y: g.mode === "recover" ? 0.15 : 1.32, z: p.z };
   g.hands = [1, -1].map((side) => {
     const localSide = side * 0.2;
     const shoulder = {

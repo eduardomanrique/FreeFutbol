@@ -147,6 +147,16 @@ export function buildPlayground(id, c) {
         ? "#547f98"
         : "#429589";
   ctx.fillRect(0, 0, 1536, 1024);
+  if (id === "sand") {
+    for (const end of [-1, 1])
+      for (const side of [-1, 1]) {
+        const x = end * (L - 9),
+          z = side * (W + 1.1);
+        rod([x, 0, z], [x, 1.65, z], 0.025, "#f4f1df");
+        const flag = box(0.55, 0.35, 0.015, "#ffdf22", x + 0.275, 1.45, z);
+        flag.name = "beach-penalty-flag";
+      }
+  }
   let seed = 42;
   const rand = () => {
     seed = (seed * 16807) % 2147483647;

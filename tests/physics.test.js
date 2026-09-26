@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Match } from "../src/simulation.js";
+import { initLocomotion } from "../src/locomotion.js";
 const isolate = (m) =>
   m.players.forEach((p, i) => {
     p.x = -30 + i * 2;
@@ -53,6 +54,16 @@ test("overpowered shot releases possession with greater speed and an inaccurate 
 test("passes release ball and select receiver", () => {
   let m = new Match();
   m.start();
+  const passer = m.players[9],
+    receiver = m.players[10];
+  Object.assign(receiver, {
+    x: passer.x + 6,
+    z: passer.z,
+    vx: 0,
+    vz: 0,
+    think: 99,
+  });
+  initLocomotion(receiver);
   assert.equal(m.pass(), true);
   assert.equal(m.ball.owner, 9);
   strike(m);

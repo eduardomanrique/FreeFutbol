@@ -1,4 +1,5 @@
 import { motionAction } from "./action-state.js";
+import { preferredFoot } from "./footedness.js";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Gameplay calibration informed by support-leg braking and trunk/pelvis
@@ -81,22 +82,38 @@ export function stepBodyExpression(p, dt) {
   const doubleSupport = l.feet.every((f) => f.contact) ? 1 : 0;
   const ginga =
     active * clamp(Math.abs(turning) * 0.8 + (l.cutBlend || 0) * 0.4, 0, 1);
+  const brake =
+    l.mode === "braking" || p.ballMotion?.style === "sole-stop"
+      ? clamp(speed / 3, 0, 1)
+      : 0;
+  const strikeSide = preferredFoot(p) === 0 ? 1 : -1;
+  const shotLoad =
+    action?.type === "shoot" ? loading * (0.7 + 0.3 * (action.power || 0)) : 0;
   const targets = {
     shift: 0.055 * sway,
     twist: active * (0.32 * turning + transfer * 0.05 * softness),
     lean: 0.22 * sway,
     arms:
       active * (Math.abs(turning) * 0.32 + Math.abs(transfer) * 0.04) +
-      (action ? 0.12 + 0.3 * clamp(action.approachSpeed / 8.5, 0, 1) : 0) *
-        loading,
+      (action ? 0.32 + 0.4 * clamp(action.approachSpeed / 8.5, 0, 1) : 0) *
+        loading +
+      0.32 * followAmount +
+      brake * 0.2,
     strikeArms:
-      (action ? 0.18 + 0.42 * clamp(action.approachSpeed / 8.5, 0, 1) : 0) *
+      (action ? 0.5 + 0.5 * clamp(action.approachSpeed / 8.5, 0, 1) : 0) *
         loading -
-      0.3 * followAmount,
-    crouch: ginga * (0.11 + 0.04 * doubleSupport),
-    fold: ginga * 0.34,
-    hipBack: posture.hipBack * loading - 0.16 * followAmount,
-    strikeLean: posture.lean * loading - 0.38 * followAmount,
+      0.65 * followAmount,
+    strikeTwist: strikeSide * (-0.48 * shotLoad + 0.58 * followAmount),
+    armAmplitude:
+      (0.12 + 0.65 * clamp(speed / 8.5, 0, 1)) * clamp(speed / 0.4, 0, 1),
+    crouch: ginga * (0.11 + 0.04 * doubleSupport) + 0.14 * brake,
+    fold: ginga * 0.34 + 0.5 * brake,
+    hipBack: p.movingStrike
+      ? 0
+      : posture.hipBack * loading - 0.16 * followAmount + 0.16 * brake,
+    strikeLean: p.movingStrike
+      ? 0.025
+      : posture.lean * loading - 0.38 * followAmount,
   };
   for (const key of Object.keys(targets)) e[key] ??= 0;
   for (const key of Object.keys(targets))

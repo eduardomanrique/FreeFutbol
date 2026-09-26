@@ -42,6 +42,7 @@ export function parseInput(value) {
     chip: value.chip === true,
     secondPress: value.secondPress === true,
     hands: value.hands === true,
+    keeperRush: value.keeperRush === true,
     events: value.events.map((e) => ({
       type: e.type,
       ...(e.type === "begin" ? { action: e.action } : {}),
@@ -59,6 +60,10 @@ const playerFields = [
   "number",
   "name",
   "keeper",
+  "footedness",
+  "turnAction",
+  "movingStrike",
+  "chestTrap",
   "x",
   "z",
   "vx",
@@ -98,6 +103,7 @@ const playerFields = [
   "throwIn",
   "receiveTurn",
   "faceHeading",
+  "ballLookYaw",
 ];
 export function renderState(match, tick, acknowledgements) {
   return {
