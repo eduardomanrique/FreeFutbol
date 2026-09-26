@@ -715,3 +715,9 @@ Build an original single-player football prototype using Three.js, fixed-step ba
 - src/keeper-possession.js centraliza área para captura e contenção do goleiro com posse. Caminhada permitida, bola e corpo ficam dentro da área; carga/direção mantêm os comandos existentes. Areia usa faixa de 9 m em toda largura, com quatro bandeiras amarelas nas laterais, segundo referência FIFA em docs/movement-research.md.
 - Testes: encaixe real, seleção, espera prolongada sem devolução, lançamento/chutão, movimentação limitada com bola, limites das três superfícies/ambos os lados, marcação próxima/distante. 281/281 testes passaram; build aprovado (aviso habitual de chunks), git diff --check limpo.
 - Capturas reais conferidas do encaixe, preparação do chutão, lançamento e bandeiras: output/keeper-review/index.html. Audit .tools/review-keeper-control.mjs passou sem pageerrors. Cenário de areia corrigido no audit para não iniciar com a bola nas coordenadas de campo grande.
+
+## 2026-09-27 — Publicação das alterações de jogabilidade
+- Commit `1e0ec2e` (`feat: refine football movement and goalkeeper controls`) enviado para `origin/codex/mobile-app`.
+- 281/281 testes passaram e `npm run build` foi concluído. Pacotes de frontend e backend verificados por SHA256 e publicados juntos.
+- Releases `20260926-c864e802bacc` (frontend) e `20260926-1c1326482e91` (backend). Ambos os containers ficaram saudáveis; não havia partidas ativas. O script confirmou que os IDs dos demais containers não mudaram.
+- Pós-deploy: health público respondeu protocol2, zero salas/partidas. HTML e quatro assets principais corresponderam byte a byte ao build local. Backup: `/opt/futebol/deploy-backups/stack-20260926-c864e802bacc`; releases anteriores `20260924-4cfd75a775f4` / `20260924-ac8c0da2477c`.
