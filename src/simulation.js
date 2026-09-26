@@ -852,12 +852,13 @@ export class Match {
       });
       // Shot input selects a point across the opponent goal, never an outward ray.
       // Error moves that point along the goal line, so the ball still travels goalward.
+      // The chip keeps some aiming help without being as precise as before.
       const targetZ = clamp(
         a.targetZ ?? 0,
         -this.field.goalHalf + 0.3,
         this.field.goalHalf - 0.3,
       );
-      precision.spread *= a.chip ? 0.7 : 0.92;
+      precision.spread *= a.chip ? 0.82 : 0.92;
       const error = (this.random() * 2 - 1) * precision.spread;
       const tx = goalX,
         tz =

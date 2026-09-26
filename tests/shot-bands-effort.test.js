@@ -230,3 +230,31 @@ test("grounded finesse remains slower than a strong aligned shot", () => {
   }
   assert.ok(speeds[2] > Math.max(speeds[0], speeds[1]) * 1.25);
 });
+
+test("chip shot keeps its arc with a small accuracy penalty versus an ordinary shot", () => {
+  const spreads = [];
+  for (const chip of [false, true]) {
+    const { m, p } = solo("match");
+    p.x = 20;
+    Object.assign(m.ball, {
+      x: 20.6,
+      z: 0,
+      y: 0.11,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      owner: p.id,
+    });
+    m.beginAction("shoot", { x: 1, chip });
+    m.releaseAction(0.6, false, chip);
+    for (let i = 0; i < 360 && !m.lastShot; i++) m.update(1 / 120, {});
+    assert.ok(m.lastShot, `chip=${chip} contact`);
+    spreads.push(m.lastShot.spread);
+    if (chip) assert.ok(m.lastShot.lift > 0, "the shot must retain its arc");
+    m.physics.dispose();
+  }
+  assert.ok(
+    Math.abs(spreads[1] / spreads[0] - 0.82 / 0.92) < 0.015,
+    `${spreads}`,
+  );
+});
