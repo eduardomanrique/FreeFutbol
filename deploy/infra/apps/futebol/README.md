@@ -2,9 +2,9 @@
 
 Public URL: https://kmworks.dev/futebol/ (also www). Exact path redirects to trailing slash.
 
-Currently deployed: Three.js/WebGL2 and Rapier/WASM frontend plus authoritative Node backend (protocol2). Release `20260926-c864e802bacc` / `20260926-1c1326482e91`, source commit `1e0ec2e`. Includes refined player footedness and movement, fall/bicycle/goalkeeper poses, moving and placed shots, manual goalkeeper possession/rush and area limits. Nginx non-root, port8080 internal only, proxy network, read-only filesystem, tmpfs32MiB, no capabilities,96MiB RAM,.25CPU,64PIDs. TLS/headers/compression use existing Traefik. No database or persistent game-state volume; backend rooms/matches stay in memory. Settings and controller profiles stay in browser localStorage.
+Currently deployed: Three.js/WebGL2 and Rapier/WASM frontend plus Node backend (protocol2). Release `20260927-cf1469562495` / `20260927-951d5e4e9136`, source commit `b32e14f`. Includes natural dribbling across speeds, turn and ball recovery fixes, animation freeze correction, defensive posture, athlete refinements and game audio. Existing container resource and isolation settings are unchanged.
 
-Released 2026-09-27. Frontend and backend containers healthy; protocol2; zero rooms/matches during rollout; unrelated container IDs preserved. Public HTML and the four main assets match the local production build byte-for-byte. Backup: `/opt/futebol/deploy-backups/stack-20260926-c864e802bacc`. Previous frontend/backend: `20260924-4cfd75a775f4` / `20260924-ac8c0da2477c`.
+Released 2026-09-27. Frontend and backend containers healthy; protocol2; zero rooms/matches before rollout; unrelated container IDs preserved. Public HTML matches the local production build byte-for-byte. Public browser smoke passed with no errors. Backup: `/opt/futebol/deploy-backups/stack-20260927-cf1469562495`. Previous frontend/backend: `20260926-c864e802bacc` / `20260926-1c1326482e91`.
 
 Product build stays outside infra at `/opt/futebol/releases/<release-id>`; `/opt/futebol/current` is the active build context. Product workspace: `/Users/eduardokmanrique/Work/games/futebol`. Build locally using `npm ci && npm run build`; upload only dist, Dockerfile, nginx.conf and SHA256SUMS. Source animation database and tests are not published.
 
