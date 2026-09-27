@@ -4,6 +4,53 @@ import { startSlide } from "../src/gameplay-actions.js";
 import { slidePose, fallPose, bicyclePose } from "../src/movement-phases.js";
 
 export const scenarios = [
+  ...["andando", "normal", "sprint"].map((pace) => ({
+    id: `recuperacao-bola-atras-${pace}`,
+    title: `Bola ficou atrás · recuperar ${pace}`,
+    kind: "carry",
+    diagnostic: true,
+    startX: 5,
+    input: { x: 1 },
+    warm: 0,
+    duration: 8,
+    phases: [
+      {
+        at: 2,
+        ballBehind: 1.5,
+        input: {
+          x: pace === "andando" ? -0.35 : -1,
+          jockey: pace === "andando",
+          sprint: pace === "sprint",
+        },
+      },
+    ],
+  })),
+  ...[false, true].map((viewBack) => ({
+    id: `short-sem-camisa-${viewBack ? "costas" : "frente"}`,
+    title: `Short sem camisa · ${viewBack ? "costas" : "frente"}`,
+    kind: "gait",
+    variant: "street",
+    team: 1,
+    viewBack,
+    input: {},
+    warm: 0.3,
+    duration: 1.5,
+  })),
+  {
+    id: "postura-defesa",
+    title: "Defesa · marcação de frente",
+    kind: "defense",
+    input: {},
+    warm: 0.5,
+    duration: 2.5,
+  },
+  {
+    id: "postura-defesa-futvolei",
+    title: "Futvôlei · postura do time sem a bola",
+    kind: "defense-volley",
+    variant: "futevolei",
+    duration: 2.5,
+  },
   {
     id: "partida",
     title: "Partida e aceleração",
@@ -44,11 +91,31 @@ export const scenarios = [
     warm: 1.6,
     duration: 2.5,
   },
+  ...["right", "left"].map((footedness) => ({
+    id: `conducao-andando-${footedness}`,
+    title: `Condução reta · andando · LT · 2 passos · ${footedness === "right" ? "destro" : "canhoto"}`,
+    kind: "carry",
+    footedness,
+    input: { x: 0.35, jockey: true },
+    warm: 0.8,
+    duration: 4,
+  })),
+  ...["media", "maxima"].flatMap((speed) =>
+    ["right", "left"].map((footedness) => ({
+      id: `conducao-${speed}-${footedness}`,
+      title: `Condução reta · ${speed === "media" ? "normal · sem LT/RT · 4 passos" : "máxima · RT · 6 passos"} · ${footedness === "right" ? "destro" : "canhoto"}`,
+      kind: "carry",
+      footedness,
+      input: { x: 1, sprint: speed === "maxima" },
+      warm: 4.5,
+      duration: 4,
+    })),
+  ),
   ...[45, 90, 180].flatMap((angle) =>
     (angle === 180 ? ["esquerda"] : ["direita", "esquerda"]).flatMap((side) =>
       [false, true].map((run) => ({
         id: `giro${angle}-${side}-${run ? "correndo" : "andando"}`,
-        title: `${angle}° · ${side} · ${run ? "correndo" : "andando"}`,
+        title: `${angle}° · ${angle === 180 && !run ? "giro pela direita com a sola" : side} · ${run ? "correndo · RT" : "andando · LT"}`,
         kind: "turn",
         angle,
         side,
@@ -58,6 +125,56 @@ export const scenarios = [
       })),
     ),
   ),
+  ...[
+    {
+      id: "arrancada-normal",
+      title: "Saída do repouso · normal",
+      input: { x: 1 },
+    },
+    {
+      id: "arrancada-sprint",
+      title: "Saída do repouso · sprint RT",
+      input: { x: 1, sprint: true },
+    },
+    {
+      id: "transicao-lt-sprint",
+      title: "Transição · LT para sprint RT",
+      input: { x: 0.35, jockey: true },
+      phases: [{ at: 2, input: { x: 1, sprint: true } }],
+    },
+    {
+      id: "transicao-normal-sprint",
+      title: "Transição · normal para sprint RT",
+      input: { x: 1 },
+      phases: [{ at: 2, input: { x: 1, sprint: true } }],
+    },
+    {
+      id: "parada-retomada-sprint",
+      title: "Parada e retomada · sprint RT",
+      input: { x: 1 },
+      phases: [
+        { at: 2, input: {} },
+        { at: 3, input: { x: 1, sprint: true } },
+      ],
+    },
+  ].map((g) => ({
+    ...g,
+    kind: "carry",
+    warm: 0,
+    duration: 6,
+    diagnostic: true,
+  })),
+  ...["direita", "esquerda"].map((side) => ({
+    id: `giro45-${side}-normal`,
+    title: `45° · ${side} · normal · sem LT/RT`,
+    kind: "turn",
+    angle: 45,
+    side,
+    run: false,
+    normal: true,
+    warm: 1.2,
+    duration: 4.5,
+  })),
   ...[0, 0.3, 1].map((pace, i) => ({
     id: ["chute-parado", "chute-andando", "chute-correndo"][i],
     title: ["Chute parado", "Chute andando", "Chute correndo"][i],
@@ -170,6 +287,7 @@ export function installReview(m, s) {
     events = [],
     previousTouch,
     previousStage;
+  let appliedPhases = new Set();
   function tick(input = {}) {
     update(1 / 120, input, {});
     for (const q of m.players) {
@@ -180,6 +298,7 @@ export function installReview(m, s) {
   function begin(g) {
     spec = g;
     clock = 0;
+    appliedPhases = new Set();
     events = [];
     previousStage = "";
     m.random = () => (g.kind === "evade" ? 0 : 0.99);
@@ -195,7 +314,10 @@ export function installReview(m, s) {
     );
     m.activeTeam = 0;
     m.multiplayer = false;
-    if (g.kind === "altinha") {
+    if (g.kind === "defense-volley") {
+      p = m.players.find((q) => q.team === 1);
+      for (let i = 0; i < 60; i++) tick({});
+    } else if (g.kind === "altinha") {
       p = m.players[0];
       m.selected = 0;
       m.altinha.receiver = 0;
@@ -222,8 +344,10 @@ export function installReview(m, s) {
       p = originals.find((q) => !q.keeper && q.team === 0);
       Object.assign(p, {
         id: 0,
-        renderId: 9,
-        x: -15,
+        renderId: g.team === 1 ? 20 : 9,
+        team: g.team ?? 0,
+        footedness: g.footedness || "right",
+        x: g.startX ?? (g.kind === "carry" ? -40 : -15),
         z: 0,
         dx: 1,
         dz: 0,
@@ -231,6 +355,7 @@ export function installReview(m, s) {
         vz: 0,
       });
       m.players = [p];
+      m.activeTeam = p.team;
       m.selected = 0;
       m.controls[1].selected = 0;
       initLocomotion(p);
@@ -245,12 +370,31 @@ export function installReview(m, s) {
         vz: 0,
         vy: 0,
       });
+      if (g.kind === "defense") {
+        const rival = originals.find((q) => q.team === 1 && !q.keeper);
+        Object.assign(rival, {
+          id: 1,
+          renderId: 20,
+          x: p.x + 2.8,
+          z: 0,
+          vx: 0,
+          vz: 0,
+          dx: -1,
+          dz: 0,
+          think: 99,
+        });
+        initLocomotion(rival);
+        rival.trainingAnchor = { x: rival.x, z: rival.z };
+        m.players.push(rival);
+        m.training = true;
+        Object.assign(m.ball, { owner: 1, x: rival.x - 0.25, lastTeam: 1 });
+      }
       m.kickCooldown = 0;
       if (g.kind === "gait") Object.assign(m.ball, { x: 20, z: 20 });
       let input = g.input || {
-        x: g.run ? 1 : 0.3,
+        x: g.run || g.normal ? 1 : 0.3,
         sprint: !!g.run,
-        jockey: !g.run,
+        jockey: !g.run && !g.normal,
       };
       if (g.kind === "shot")
         input = { x: g.pace, sprint: g.pace === 1, jockey: g.pace === 0.3 };
@@ -376,6 +520,16 @@ export function installReview(m, s) {
       return p.chestTrap.hitAt == null
         ? "peito:preparação"
         : "peito:amortecimento";
+    if (p.turnAction?.soleRoll && p.turnAction.contactAt != null) {
+      const phase = p.ballMotion
+        ? p.locomotion.feet[p.ballMotion.foot].phase < 0.36
+          ? "sole-stop"
+          : p.locomotion.feet[p.ballMotion.foot].phase < 0.76
+            ? "sole-pull"
+            : "right-plant"
+        : "left-step";
+      return `virada:${phase}`;
+    }
     if (p.turnAction)
       return `virada:${p.turnAction.phase}:${p.turnAction.segment}`;
     if (p.goalkeeping) return `goleiro:${p.goalkeeping.mode}`;
@@ -394,15 +548,32 @@ export function installReview(m, s) {
       if (spec.kind === "shot" && clock < 0.16 && clock + 1 / 120 >= 0.16)
         m.releaseAction(0.7, !!spec.finesse);
       let input = {};
-      if (spec.kind === "gait") input = spec.input;
+      if (spec.kind === "gait" || spec.kind === "carry") input = spec.input;
+      for (const phase of spec.phases || []) {
+        if (clock + 1 / 240 >= phase.at) {
+          input = phase.input;
+          if (phase.ballBehind && !appliedPhases.has(phase.at)) {
+            Object.assign(m.ball, {
+              x: p.x - Math.sin(p.locomotion.heading) * phase.ballBehind,
+              z: p.z - Math.cos(p.locomotion.heading) * phase.ballBehind,
+              y: 0.11,
+              vx: 0,
+              vz: 0,
+              vy: 0,
+              owner: p.id,
+            });
+            appliedPhases.add(phase.at);
+          }
+        }
+      }
       if (spec.kind === "turn") {
         const a =
           ((spec.angle * Math.PI) / 180) * (spec.side === "direita" ? -1 : 1);
         input = {
-          x: Math.cos(a) * (spec.run ? 1 : 0.35),
-          z: -Math.sin(a) * (spec.run ? 1 : 0.35),
+          x: Math.cos(a) * (spec.run || spec.normal ? 1 : 0.35),
+          z: -Math.sin(a) * (spec.run || spec.normal ? 1 : 0.35),
           sprint: spec.run,
-          jockey: !spec.run,
+          jockey: !spec.run && !spec.normal,
         };
       }
       tick(input);
@@ -480,11 +651,16 @@ export function installReview(m, s) {
     s.playerEffects.rows.forEach((o) => (o.root.visible = false));
     for (const q of m.players)
       if (q !== p) s.rigs[q.renderId ?? q.id].root.visible = false;
-    const h = spec.kind === "bicycle" ? Math.PI * 1.5 : Math.PI / 2;
+    const h = spec.kind.startsWith("defense")
+      ? p.locomotion.heading
+      : spec.kind === "bicycle"
+        ? Math.PI * 1.5
+        : Math.PI / 2;
+    const cameraHeading = h + (spec.viewBack ? Math.PI : 0);
     s.camera.position.set(
-      p.x + Math.sin(h) * 3.7 + Math.cos(h) * 2.4,
+      p.x + Math.sin(cameraHeading) * 3.7 + Math.cos(cameraHeading) * 2.4,
       2.2,
-      p.z + Math.cos(h) * 3.7 - Math.sin(h) * 2.4,
+      p.z + Math.cos(cameraHeading) * 3.7 - Math.sin(cameraHeading) * 2.4,
     );
     s.camera.lookAt(p.x, 1.05, p.z);
     s.renderer.render(s.scene, s.camera);

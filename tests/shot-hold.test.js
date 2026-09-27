@@ -76,6 +76,9 @@ test("moving shots retain momentum through support and contact, then brake after
   ]) {
     const { m, p } = solo();
     for (let i = 0; i < 80; i++) m.update(1 / 120, input);
+    // Isolate the moving strike with a reachable rolling ball; carrying now
+    // permits up to six steps with the ball freely ahead of the player.
+    Object.assign(m.ball, { x: p.x + 0.6, z: p.z, vx: p.vx, vz: p.vz });
     m.beginAction("shoot", input);
     m.releaseAction(0.8);
     const approachSpeed = Math.hypot(p.vx, p.vz);

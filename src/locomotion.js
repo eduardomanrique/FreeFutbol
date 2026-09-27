@@ -1,3 +1,4 @@
+import { naturalCarry, naturalGait } from "./walking-carry.js";
 import { motionAction } from "./action-state.js";
 import { stepBodyExpression } from "./body-expression.js";
 import { preferredFoot as dominantFoot, FOOTEDNESS } from "./footedness.js";
@@ -52,6 +53,8 @@ export function initLocomotion(p) {
     moving: false,
     time: 0,
     stepCount: 0,
+    // Set-piece placement can render before the first locomotion tick.
+    strideInterval: 0.39 * 0.9,
     grounded: true,
     ax: 0,
     az: 0,
@@ -90,15 +93,22 @@ function lift(p, foot, duration, settle = false) {
 // support. A foot that has just landed cannot instantly strike again.
 export function ballMotionDuration(p, kind, power = 0) {
   const speed = Math.hypot(p.vx, p.vz);
+  if (kind === "dribble" && p.turnAction?.soleRoll) return 1.05;
   if (kind === "strike" && p.movingStrike) return 0.27 - 0.04 * power;
-  return kind === "dribble"
-    ? clamp(0.24 - speed * 0.009, 0.14, 0.24)
-    : p.ballAction?.quickTouch
-      ? 0.16
-      : clamp(0.34 + 0.05 * power - speed * 0.026, 0.16, 0.4);
+  return kind === "dribble" && p.turnAction?.strideTouch
+    ? clamp(0.34 - speed * 0.025, 0.2, 0.32)
+    : kind === "dribble"
+      ? clamp(0.24 - speed * 0.009, 0.14, 0.24)
+      : p.ballAction?.quickTouch
+        ? 0.16
+        : clamp(0.34 + 0.05 * power - speed * 0.026, 0.16, 0.4);
 }
 export const ballContactPhase = (p, kind, power = 0) =>
-  kind === "strike" && p.movingStrike ? 0.4 - 0.08 * power : 0.62;
+  kind === "dribble" && p.turnAction?.soleRoll
+    ? 0.24
+    : kind === "strike" && p.movingStrike
+      ? 0.4 - 0.08 * power
+      : 0.62;
 export const strikePlantDuration = (p) =>
   p.movingStrike
     ? clamp(
@@ -231,6 +241,28 @@ export function startBallMotion(
     if (p.movingStrike) p.movingStrike.stage = "strike";
     return true;
   }
+  if (kind === "dribble" && naturalCarry(p)) {
+    const index = dominantFoot(p),
+      foot = l.feet[index];
+    // Join an existing swing. Do not restart the step or reach toward the ball.
+    if (
+      foot.contact ||
+      foot.special ||
+      (foot.phase > 0.8 && p.lastDribble?.kind !== "cut")
+    )
+      return false;
+    p.ballMotion = {
+      kind,
+      power,
+      foot: index,
+      target: { ...target },
+      hit: false,
+      naturalCarry: true,
+      heading: l.heading,
+      contactPhase: 0.72,
+    };
+    return true;
+  }
   const eligible = (f) =>
     preferredFoot === null || urgent || l.feet[preferredFoot] === f;
   let foot = [...l.feet]
@@ -265,6 +297,8 @@ export function startBallMotion(
   }
   if (!foot) return false;
   const duration = ballMotionDuration(p, kind, power);
+  if (kind === "dribble" && p.walkRequested && !p.shield)
+    l.nextFoot = 1 - l.feet.indexOf(foot);
   lift(p, foot, duration);
   foot.special = "ball";
   p.ballMotion = {
@@ -279,7 +313,15 @@ export function startBallMotion(
       !!p.ballAction.finesse &&
       !p.ballAction.chip,
     heading: l.heading,
+    soleRoll: kind === "dribble" && !!p.turnAction?.soleRoll,
+    strideTouch: kind === "dribble" && !!p.turnAction?.strideTouch,
+    exitHeading: p.turnAction?.exitHeading,
   };
+  if (p.ballMotion.soleRoll) {
+    p.ballMotion.style = "sole-stop";
+    p.ballMotion.contactPhase = 0.24;
+    p.ballMotion.origin = p.turnAction.origin;
+  }
   return true;
 }
 export function stepLocomotion(
@@ -333,7 +375,7 @@ export function stepLocomotion(
       (1 - Math.exp(-dt * (cutDemand > (l.cutBlend || 0) ? 16 : 5)));
   const cutting = l.cutBlend > 0.08 && turnSpeed > 0.2;
   const stopping = desiredSpeed < 0.08;
-  const agile = !!p.closeControl && speed < 4.2;
+  const agile = !!p.closeControl && speed < 4.2 && !naturalCarry(p);
   const running = speed > 3.0 && !agile;
   const cruising = running && p.sprintRequested === false && !motionAction(p);
   const interval =
@@ -376,6 +418,32 @@ export function stepLocomotion(
   );
   l.yawVelocity += (yawTarget - l.yawVelocity) * (1 - Math.exp(-dt * 14));
   l.heading += l.yawVelocity * dt;
+  const turn = p.turnAction;
+  if (
+    turn?.strideTouch &&
+    turn.phase === "plant" &&
+    turn.readyPlant &&
+    !turn.plantStarted
+  ) {
+    const support = l.feet[turn.supportFoot];
+    if (l.feet[turn.touchFoot].contact && !support.special && !p.ballMotion) {
+      // Place beside the upcoming COM, never beyond the reachable stance.
+      const forward = Math.min(0.78, Math.hypot(p.vx, p.vz) * 0.23);
+      turn.plantTarget = {
+        x: p.x + Math.sin(turn.origin) * forward + Math.cos(turn.origin) * 0.3,
+        z: p.z + Math.cos(turn.origin) * forward - Math.sin(turn.origin) * 0.3,
+      };
+      lift(p, support, clamp(0.2 - speed * 0.015, 0.11, 0.18));
+      support.special = "turn-plant";
+      turn.plantStarted = true;
+    }
+  }
+  for (const foot of l.feet)
+    if (
+      foot.special === "turn-support" &&
+      (!turn?.strideTouch || (turn.phase === "exit" && !p.ballMotion))
+    )
+      foot.special = null;
   const kickFoot = dominantFoot(p);
   const plantKick = speed < 7 && l.feet[1 - kickFoot].contact;
   for (const foot of l.feet) {
@@ -420,7 +488,13 @@ export function stepLocomotion(
     if (l.clock >= interval) {
       let i = l.nextFoot;
       if (
-        !l.feet.some((f) => f.special === "ball" || f.special === "plant") &&
+        !l.feet.some(
+          (f) =>
+            (f.special === "ball" && !p.ballMotion?.naturalCarry) ||
+            f.special === "plant" ||
+            f.special === "turn-plant" ||
+            f.special === "turn-support",
+        ) &&
         l.feet[i].contact &&
         l.feet[i].age >= Math.min(0.12, contactDuration * 0.6) &&
         (l.feet[1 - i].contact ||
@@ -457,6 +531,24 @@ export function stepLocomotion(
     }
     foot.phase = Math.min(1, foot.phase + dt / foot.duration);
     const remaining = (1 - foot.phase) * foot.duration;
+    if (foot.special === "turn-plant") {
+      const t = smooth(foot.phase);
+      const goal = turn?.plantTarget || foot.to;
+      foot.x = foot.from.x + (goal.x - foot.from.x) * t;
+      foot.z = foot.from.z + (goal.z - foot.from.z) * t;
+      foot.y = 0.098 * athleteScale(p.id) + Math.sin(Math.PI * t) * 0.1;
+      if (foot.phase >= 1) {
+        foot.contact = true;
+        foot.age = 0;
+        foot.landings++;
+        foot.special = null;
+        if (turn) {
+          turn.planted = true;
+          foot.special = "turn-support";
+        }
+      }
+      continue;
+    }
     if (foot.special === "plant" && p.strikePlant) {
       const t = smooth(foot.phase);
       foot.x = foot.from.x + (p.strikePlant.target.x - foot.from.x) * t;
@@ -469,14 +561,45 @@ export function stepLocomotion(
       }
       continue;
     }
-    if (foot.special === "ball" && p.ballMotion) {
+    if (foot.special === "ball" && p.ballMotion && !p.ballMotion.naturalCarry) {
       const m = p.ballMotion;
       const contactPhase = m.contactPhase ?? 0.62;
       const contactHeight = m.style === "sole-stop" ? 0.27 : 0.15;
-      if (foot.phase <= contactPhase) {
+      if (m.soleRoll && m.hit) {
+        const roll = smooth(clamp((foot.phase - 0.36) / 0.38, 0, 1));
+        const land = smooth(clamp((foot.phase - 0.76) / 0.24, 0, 1));
+        foot.x =
+          m.soleAnchor.x -
+          Math.sin(m.origin) * roll * 0.5 +
+          Math.cos(l.heading) * foot.side * land * 0.14;
+        foot.z =
+          m.soleAnchor.z -
+          Math.cos(m.origin) * roll * 0.5 -
+          Math.sin(l.heading) * foot.side * land * 0.14;
+        foot.y =
+          0.27 +
+          Math.sin(Math.PI * land) * 0.1 -
+          land * (0.27 - 0.098 * athleteScale(p.id));
+      } else if (foot.phase <= contactPhase) {
         const t = smooth(foot.phase / contactPhase);
         foot.x = foot.from.x + (m.target.x - foot.from.x) * t;
         foot.z = foot.from.z + (m.target.z - foot.from.z) * t;
+        if (m.strideTouch) {
+          // Recollect behind the diagonal contact line; the extension itself
+          // is already directed toward the exit, including before impact.
+          const u = foot.phase / contactPhase;
+          const behindX = m.target.x - Math.sin(m.exitHeading) * 0.38;
+          const behindZ = m.target.z - Math.cos(m.exitHeading) * 0.38;
+          if (u < 0.4) {
+            const fold = smooth(u / 0.4);
+            foot.x = foot.from.x + (behindX - foot.from.x) * fold;
+            foot.z = foot.from.z + (behindZ - foot.from.z) * fold;
+          } else {
+            const extend = smooth((u - 0.4) / 0.6);
+            foot.x = behindX + (m.target.x - behindX) * extend;
+            foot.z = behindZ + (m.target.z - behindZ) * extend;
+          }
+        }
         if (m.style === "backheel") {
           const wind = Math.sin(Math.PI * t) * 0.6;
           foot.x += Math.sin(m.heading) * wind;
@@ -486,16 +609,24 @@ export function stepLocomotion(
           foot.from.y +
           (contactHeight - foot.from.y) * t +
           Math.sin(Math.PI * t) *
-            (m.kind === "dribble" ? 0.06 : 0.18 + 0.12 * m.power);
+            (m.strideTouch
+              ? 0.34
+              : m.kind === "dribble"
+                ? 0.06
+                : 0.18 + 0.12 * m.power);
       } else {
         const t = smooth((foot.phase - contactPhase) / (1 - contactPhase));
         const follows = m.kind === "strike" && m.hit && m.style !== "backheel";
         const rest = positionBeside(
           p,
           foot.side,
-          l.heading,
-          follows ? 0.16 + 0.12 * m.power : 0,
+          m.strideTouch ? m.exitHeading : l.heading,
+          m.strideTouch ? 0.24 : follows ? 0.16 + 0.12 * m.power : 0,
         );
+        if (m.strideTouch) {
+          rest.x = m.target.x + Math.sin(m.exitHeading) * 0.1;
+          rest.z = m.target.z + Math.cos(m.exitHeading) * 0.1;
+        }
         const extension = follows
           ? Math.sin(Math.PI * t) * (0.18 + 0.18 * m.power)
           : 0;
@@ -509,6 +640,9 @@ export function stepLocomotion(
           Math.cos(m.heading) * extension;
         foot.y =
           contactHeight +
+          (m.strideTouch
+            ? (0.098 * athleteScale(p.id) - contactHeight) * t
+            : 0) +
           Math.sin(Math.PI * t) *
             (m.kind === "dribble" ? 0.07 : 0.22 + 0.2 * m.power);
       }
@@ -523,7 +657,11 @@ export function stepLocomotion(
               ),
             ))
         : 0;
-      foot.heading = l.heading + foot.side * opening * 1.3;
+      foot.heading = m.strideTouch
+        ? m.heading +
+          angle(m.heading, m.exitHeading) *
+            smooth(Math.min(1, foot.phase / 0.3))
+        : l.heading + foot.side * opening * 1.3;
       if (foot.phase >= 1) {
         foot.special = null;
         foot.contact = true;
@@ -531,6 +669,7 @@ export function stepLocomotion(
         foot.landings++;
         foot.y = 0.098 * athleteScale(p.id);
         p.ballMotion = null;
+        if (m.soleRoll) l.nextFoot = 1 - m.foot;
         if (m.kind === "strike" && p.movingStrike) {
           l.lastMovingStrike = {
             ...p.movingStrike,
@@ -559,7 +698,10 @@ export function stepLocomotion(
         foot.to.x += (rest.x - foot.to.x) * recover;
         foot.to.z += (rest.z - foot.to.z) * recover;
       }
-    } else if (foot.special) {
+    } else if (
+      foot.special &&
+      !(foot.special === "ball" && p.ballMotion?.naturalCarry)
+    ) {
       const forward =
         foot.special === "windup"
           ? -0.18 - 0.24 * preparation
@@ -605,6 +747,8 @@ export function stepLocomotion(
       continue;
     }
     if (foot.phase >= 1) {
+      if (p.ballMotion?.naturalCarry && l.feet[p.ballMotion.foot] === foot)
+        p.ballMotion = null;
       if (foot.special === "reach") p.reachCooldown = 0.22;
       foot.special = null;
       foot.contact = true;
@@ -612,6 +756,13 @@ export function stepLocomotion(
       foot.settle = false;
       foot.y = 0.098 * athleteScale(p.id);
       foot.landings++;
+      if (foot.lastLanding != null) {
+        const elapsed = (l.time - foot.lastLanding) / 2;
+        if (elapsed > 0.04 && elapsed < 0.5)
+          l.actualStrideInterval =
+            (l.actualStrideInterval ?? interval) * 0.25 + elapsed * 0.75;
+      }
+      foot.lastLanding = l.time;
     }
   }
   let contacts = l.feet.filter((f) => f.contact);
@@ -619,7 +770,12 @@ export function stepLocomotion(
   // impossible anchor. This is a contact transition, never a moved ground anchor.
   for (const foot of contacts) {
     if (
-      Math.hypot(foot.x - p.x, foot.z - p.z) > 0.6 + 0.06 * preparation &&
+      Math.hypot(foot.x - p.x, foot.z - p.z) >
+        (foot.special === "turn-support"
+          ? 0.82
+          : naturalGait(p) && running
+            ? 0.95
+            : 0.6 + 0.06 * preparation) &&
       l.moving &&
       foot.special !== "plant"
     ) {

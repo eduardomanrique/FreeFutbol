@@ -1,3 +1,4 @@
+import { GameAudio } from "./audio.js";
 import { shotBand } from "./ball-actions.js";
 import { modeConfig } from "./modes.js";
 import { loadAthleteAssets } from "./skinned-athlete.js";
@@ -41,9 +42,6 @@ let calibration = null,
 const keyboardHints = document.querySelector(".quick-controls").innerHTML;
 let modalType = null,
   previousMode = "home",
-  soundOn = false,
-  audio = null,
-  lastSequence = 0,
   manualUntil = 0;
 const online = new OnlineClient({
   onRoom(room, team) {
@@ -266,21 +264,20 @@ $("online-share").onclick = async () => {
     $("online-message").textContent = `Convide pelo código ${online.room.code}`;
   }
 };
-function beep(freq = 600, duration = 0.15) {
-  if (!soundOn) return;
-  audio ??= new AudioContext();
-  audio.resume();
-  let osc = audio.createOscillator(),
-    gain = audio.createGain();
-  osc.type = "sine";
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.06, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duration);
-  osc.connect(gain);
-  gain.connect(audio.destination);
-  osc.start();
-  osc.stop(audio.currentTime + duration);
-}
+const sound = new GameAudio();
+const syncSoundButton = () => {
+  $("sound").style.color = sound.enabled ? "#c4f58a" : "#dbe1d9";
+  $("sound").setAttribute("aria-pressed", String(sound.enabled));
+  const label = sound.enabled ? "Desativar som" : "Ativar som";
+  $("sound").setAttribute("aria-label", label);
+  $("sound").title = label;
+};
+syncSoundButton();
+window.addEventListener("pointerdown", () => sound.unlock(), { passive: true });
+window.addEventListener("keydown", () => sound.unlock());
+document.addEventListener("visibilitychange", () =>
+  sound.update(match, document.hidden),
+);
 function setPlaying(on) {
   volleyAttackHeld = false;
   $("home").hidden = on;
@@ -396,7 +393,7 @@ function start() {
     $("game-mode").value,
   );
   setPlaying(true);
-  beep(1700, 0.3);
+  sound.unlock();
 }
 function showModal(type) {
   touch.reset();
@@ -589,14 +586,8 @@ $("nav-play").onclick = () => {
 $("close-modal").onclick = () => closeModal();
 $("fullscreen").onclick = fullscreen;
 $("sound").onclick = () => {
-  soundOn = !soundOn;
-  $("sound").style.color = soundOn ? "#c4f58a" : "#dbe1d9";
-  $("sound").setAttribute(
-    "aria-label",
-    soundOn ? "Desativar som" : "Ativar som",
-  );
-  $("sound").title = soundOn ? "Desativar som" : "Ativar som";
-  beep();
+  sound.setEnabled(!sound.enabled);
+  syncSoundButton();
 };
 window.addEventListener("keydown", (e) => {
   if (
@@ -737,6 +728,7 @@ function step(dt) {
   }
   if (online.active) online.update(dt, input, match);
   else match.update(dt, input);
+  sound.update(match, document.hidden);
   hudAccumulator += dt;
   if (hudAccumulator > 0.075) {
     updateHUD();
@@ -916,10 +908,6 @@ function updateHUD() {
       : band === "long-range"
         ? "#ffd664"
         : "#c4f58a";
-  if (match.sequence !== lastSequence) {
-    lastSequence = match.sequence;
-    if (match.mode === "goal") beep(850, 0.5);
-  }
   $("radar-dots").innerHTML =
     match.players
       .map(
@@ -932,6 +920,7 @@ function updateHUD() {
 window.render_game_to_text = () =>
   JSON.stringify({
     ...match.snapshot(),
+    audio: sound.snapshot(),
     variant: match.variant,
     field: match.field,
     network: {
@@ -984,6 +973,7 @@ if (new URLSearchParams(location.search).has("test"))
   window.__test = {
     match,
     stadium,
+    sound,
     online,
     step: (ms) => window.advanceTime(ms),
   };
@@ -992,6 +982,8 @@ let last = performance.now(),
   frames = 0,
   fpsTime = 0;
 function frame(now) {
+  // Keep the loop alive if a one-frame rendering/device error is reported.
+  requestAnimationFrame(frame);
   pollController(now);
   let rawElapsed = Math.max(0, (now - last) / 1000);
   let elapsed = Math.min(rawElapsed, 0.08);
@@ -1011,7 +1003,6 @@ function frame(now) {
     frames = 0;
     fpsTime = 0;
   }
-  requestAnimationFrame(frame);
 }
 const inviteCode = new URLSearchParams(location.search).get("room");
 if (inviteCode) {
@@ -1187,10 +1178,7 @@ function releaseShot() {
           (readInput().finesse && !readInput().chip ? 900 / 0.85 : 900),
       ),
     );
-    if (
-      gameAction("releaseAction", power, readInput().finesse, readInput().chip)
-    )
-      beep(160, 0.1);
+    gameAction("releaseAction", power, readInput().finesse, readInput().chip);
   }
   shotSource = null;
   shotReleaseDelay = null;

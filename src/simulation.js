@@ -1,3 +1,4 @@
+import { naturalCarry } from "./walking-carry.js";
 import { inKeeperArea, constrainKeeperCarry } from "./keeper-possession.js";
 import { defensiveFacing } from "./defensive-facing.js";
 import {
@@ -1113,6 +1114,24 @@ export class Match {
       return;
     }
     const m = p.ballMotion;
+    if (m?.soleRoll && m.hit) {
+      const foot = p.locomotion.feet[m.foot];
+      const rolling = foot.phase >= 0.36 && foot.phase <= 0.76;
+      const dx = foot.x - b.x,
+        dz = foot.z - b.z;
+      const distance = Math.hypot(dx, dz);
+      const speed =
+        rolling && distance < 0.35 ? Math.min(2.5, distance * 120) : 0;
+      if (distance < 0.35) {
+        b.vx = distance ? (dx / distance) * speed : 0;
+        b.vz = distance ? (dz / distance) * speed : 0;
+        b.spin = 0;
+        this.physics.ball.setAngvel(
+          { x: b.vz / 0.11, y: 0, z: -b.vx / 0.11 },
+          true,
+        );
+      }
+    }
     if (
       m &&
       !m.hit &&
@@ -1126,16 +1145,21 @@ export class Match {
             length(
               p.locomotion.feet[p.strikePlant.foot].x - b.x,
               p.locomotion.feet[p.strikePlant.foot].z - b.z,
-            ) < 0.65)) &&
+            ) < 0.48)) &&
         foot.phase >=
-          (m.contactPhase
-            ? m.contactPhase * 0.7
-            : m.style === "backheel"
-              ? 0.55
-              : 0.44) &&
+          (m.soleRoll
+            ? 0.24
+            : m.strideTouch
+              ? 0.6
+              : m.contactPhase
+                ? m.contactPhase * 0.7
+                : m.style === "backheel"
+                  ? 0.55
+                  : 0.44) &&
         footBallDistance(foot, b, foot.previous) < 0.27
       ) {
         m.hit = true;
+        if (m.soleRoll) m.soleAnchor = { x: b.x, z: b.z };
         if (m.kind === "strike" && a?.stage === "pending")
           this.executeAction(p, a);
         else {
@@ -1170,12 +1194,17 @@ export class Match {
           };
           p.lastDribble = { ...impulse, time: this.elapsed, landings };
           turnContact(p);
-          if (impulse.kind === "launch") p.sprintFirstTouch = false;
+          if (impulse.kind === "launch" || m.naturalCarry)
+            p.sprintFirstTouch = false;
           p.touchCooldown = 0.08;
         }
       }
     }
-    if (p.ballMotion) return;
+    if (
+      p.ballMotion ||
+      (p.turnAction?.soleRoll && p.turnAction.phase !== "touch")
+    )
+      return;
     if (a?.stage === "charging") {
       const preparationTime =
         Math.max(0.18, 0.315 - (a.heldSeconds || 0)) + 0.12;
@@ -1236,7 +1265,7 @@ export class Match {
       kind === "dribble"
         ? {
             preferredFoot: p.turnAction?.touchFoot ?? preferredFoot(p),
-            urgent: p.turnAction ? false : urgent,
+            urgent: p.turnAction || naturalCarry(p) ? false : urgent,
           }
         : {},
     );

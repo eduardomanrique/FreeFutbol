@@ -58,7 +58,12 @@ test("Rapier grass contact stops low and medium balls without reversing their di
     distances.push(m.ball.x);
     engine.dispose();
   }
-  assert.ok(distances[0] > 1 && distances[0]<2 && distances[1] < 8 && distances[1] > distances[0] * 2);
+  assert.ok(
+    distances[0] > 1 &&
+      distances[0] < 2 &&
+      distances[1] < 8 &&
+      distances[1] > distances[0] * 2,
+  );
   console.log("Rapier stopping distances, 5/10 m/s:", distances);
 });
 
@@ -79,4 +84,17 @@ test("root correction changes displacement without accumulating propulsion veloc
   engine.step(match, dt);
   assert.ok(Math.abs(p.x - 0.2) < 1e-5);
   engine.dispose();
+});
+
+test("small residual downward velocity on grass does not disable rolling resistance", () => {
+  const engine = new FootballPhysics();
+  const m = { players: [], ball: ball({ vx: 9 }) };
+  try {
+    for (let i = 0; i < 30; i++) engine.step(m, 1 / 30);
+    assert.ok(m.ball.vx < 4, `grass must slow the ball: ${m.ball.vx}`);
+    assert.equal(m.ball.vy, 0);
+    assert.equal(m.ball.y, 0.11);
+  } finally {
+    engine.dispose();
+  }
 });

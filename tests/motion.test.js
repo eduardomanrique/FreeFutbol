@@ -69,13 +69,13 @@ test("root correction reaches the bounded target independently of timestep and l
     assert.ok(warp.done);
   }
 });
-test("live match advances search, skeletal inertia and distance; reset recreates animation controllers", () => {
+test("live match advances gait phase and skeletal inertia; reset recreates animation controllers", () => {
   const m = new Match();
   m.attachMotionLibrary(library);
   m.start();
   const original = m.players[9].motion;
   for (let i = 0; i < 240; i++) m.update(1 / 120, { x: 1, sprint: true });
-  assert.ok(original.searches > 10);
+  assert.ok(original.walkCycle && original.time > 0);
   assert.ok(original.transitions > 0);
   assert.ok(original.pose.every(Number.isFinite));
   assert.ok(m.physics.steps >= 240);
@@ -143,4 +143,52 @@ test("cruise jog has an upright relaxed presentation distinct from sprint", () =
   assert.equal(results[1].gait, "sprint");
   assert.ok(results[0].relaxedBlend > 0.65 && results[1].relaxedBlend < 0.05);
   assert.ok(results[0].driveLean < results[1].driveLean * 0.7);
+});
+
+test("a freshly placed moving player has a finite gait before its first locomotion tick", async () => {
+  const { initLocomotion } = await import("../src/locomotion.js");
+  const m = new Match();
+  m.attachMotionLibrary(library);
+  m.start();
+  try {
+    const p = m.players[9];
+    Object.assign(p, { vx: 0.25, vz: 0, dribbleIntent: { x: 9, z: 0 } });
+    initLocomotion(p); // throw-in/goal-kick placement renders in this state
+    p.motion.update(p, m, 1 / 120);
+    assert.ok(Number.isFinite(p.motion.time));
+    assert.ok(p.motion.feature.contacts);
+    assert.ok(p.motion.pose.every(Number.isFinite));
+  } finally {
+    m.physics.dispose();
+  }
+});
+
+test("street restarts keep every animation finite through repeated movement and shots", () => {
+  let seed = 2;
+  const m = new Match({
+    random: () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296,
+  });
+  m.attachMotionLibrary(library);
+  m.start(180, "normal", false, "street");
+  try {
+    for (let i = 0; i < 1500; i++) {
+      const a = (Math.floor(i / 90) * Math.PI) / 4;
+      const input = {
+        x: Math.cos(a),
+        z: Math.sin(a),
+        sprint: i % 600 < 400,
+        jockey: i % 600 >= 500,
+      };
+      m.update(1 / 120, input);
+      if (i % 500 === 300) m.beginAction("shoot", input);
+      if (i % 500 === 330) m.releaseAction(0.5);
+      for (const p of m.players) {
+        assert.ok(p.motion.feature, `frame ${i}, player ${p.id}`);
+        assert.ok(Number.isFinite(p.motion.time));
+        assert.ok(p.motion.pose.every(Number.isFinite));
+      }
+    }
+  } finally {
+    m.physics.dispose();
+  }
 });

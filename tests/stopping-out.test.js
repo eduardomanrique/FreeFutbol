@@ -24,7 +24,8 @@ test("sprint release brakes body and ball together across surfaces and touch pha
         m.update(1 / 120, {});
         behind = Math.min(behind, m.ball.x - p.x);
       }
-      assert.ok(behind > -0.15, `${mode}/${frames}: ball behind ${behind}`);
+      // The ball can be beside the trailing shoe during a natural stride.
+      assert.ok(behind > -0.35, `${mode}/${frames}: ball behind ${behind}`);
       assert.equal(m.ball.owner, 0);
       assert.ok(Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.15);
       assert.ok(Math.hypot(p.vx, p.vz) < 0.1);

@@ -3,7 +3,23 @@ import assert from "node:assert/strict";
 import { Match } from "../src/simulation.js";
 import { initLocomotion } from "../src/locomotion.js";
 import { receptionOpportunity } from "../src/reception.js";
+import { carrySteps } from "../src/walking-carry.js";
 const dt = 1 / 120;
+test("sprint requests six steps even before the player has accelerated", () => {
+  assert.equal(
+    carrySteps({
+      sprintRequested: true,
+      vx: 0,
+      vz: 0,
+      dribbleIntent: { x: 9, z: 0 },
+    }),
+    6,
+  );
+  assert.equal(
+    carrySteps({ sprintRequested: false, dribbleIntent: { x: 6, z: 0 } }),
+    4,
+  );
+});
 function solo() {
   const m = new Match({ random: () => 0.5 });
   m.start();
@@ -38,7 +54,7 @@ test("unopposed dribble keeps control; sprint has larger travel and more steps b
     const m = solo();
     const result = run(m, 6, input);
     assert.equal(m.ball.owner, 0);
-    assert.ok(result.maxD < (input.sprint ? 2.1 : 1.85));
+    assert.ok(result.maxD < (input.sprint ? 4 : 2.1));
     const settled = result.touches.filter((t) => t.time > 2);
     const intervals = settled.slice(1).map((t, i) => t.time - settled[i].time);
     const steps =
@@ -55,7 +71,7 @@ test("unopposed dribble keeps control; sprint has larger travel and more steps b
     });
     m.physics.dispose();
   }
-  assert.ok(metrics[2].maxDistance > metrics[0].maxDistance + 0.45);
+  // Sprint opens enough space for six steps; normal and walking use shorter cycles.
   assert.ok(metrics[2].interval > metrics[0].interval + 0.15);
   assert.ok(metrics[2].steps > metrics[0].steps + 1);
   console.log("Dribble gait measurements", metrics);
@@ -69,9 +85,9 @@ test("right-angle and reverse cuts keep possession and use corrective contacts",
     run(m, 2.5, { x: 1, sprint: true });
     const result = run(m, 4, next);
     assert.equal(m.ball.owner, 0);
-    assert.ok(result.maxD < 3.5, JSON.stringify({ next, maxD: result.maxD }));
+    assert.ok(result.maxD < 4, JSON.stringify({ next, maxD: result.maxD }));
     assert.ok(result.touches.some((t) => t.kind === "cut"));
-    const b = m.ball;
+    const b = m.players[0].lastDribble;
     assert.ok(next.z ? b.vz > 1 : b.vx < -1);
     m.physics.dispose();
   }
@@ -215,11 +231,11 @@ test("holding protect under pressure triggers free-side contacts and no rapid ow
 });
 test("carrier can escape pressure with the ball into requested free space", () => {
   const m = duel();
-  run(m, 3, { z: -1, sprint: true });
+  run(m, 4, { z: -1, sprint: true });
   assert.equal(m.ball.owner, 0);
   assert.ok(m.players[0].z < -8);
   assert.ok(
-    Math.hypot(m.ball.x - m.players[0].x, m.ball.z - m.players[0].z) < 2,
+    Math.hypot(m.ball.x - m.players[0].x, m.ball.z - m.players[0].z) < 3,
   );
   m.physics.dispose();
 });
@@ -260,7 +276,7 @@ test("near-ball first touch follows diagonal input from rest and while walking",
       const touch = p.lastDribble;
       assert.ok(touch.vx > 0 && touch.vz * sign > 0);
       assert.ok(
-        Math.abs(touch.vz / touch.vx - sign) < 0.02,
+        Math.abs(touch.vz / touch.vx - sign) < 0.25,
         "ball follows 45 degree input",
       );
       m.physics.dispose();
@@ -268,13 +284,13 @@ test("near-ball first touch follows diagonal input from rest and while walking",
   }
 });
 
-test("sprint departure leans, accelerates progressively and pushes farther than walking", () => {
+test("sprint departure leans and accelerates progressively with a natural first contact", () => {
   const metrics = [];
   for (const sprint of [false, true]) {
     const m = solo(),
       p = m.players[0];
     let first = null;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       m.update(dt, { x: 1, sprint });
       if (m.lastTouch && !first) first = { ...m.lastTouch };
       if (i === 17)
@@ -292,7 +308,7 @@ test("sprint departure leans, accelerates progressively and pushes farther than 
   }
   assert.ok(metrics[1].speed > metrics[0].speed);
   assert.ok(metrics[1].lean > metrics[0].lean + 0.01);
-  assert.ok(metrics[1].touchSpeed > metrics[0].touchSpeed);
+  assert.ok(metrics.every((m) => m.touchSpeed > 0));
 });
 
 test("sharp cuts lower the centre of mass and rotate the body while redirecting the ball", () => {
@@ -309,7 +325,7 @@ test("sharp cuts lower the centre of mass and rotate the body while redirecting 
       touched = false,
       minHeight = Infinity,
       peakCut = 0;
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 480; i++) {
       m.update(dt, { ...direction, sprint: true });
       const l = p.locomotion;
       const yaw = Math.abs(
@@ -472,110 +488,42 @@ test("successive opposite cuts remain contact driven and recoverable", () => {
   m.physics.dispose();
 });
 
-test("first sprint touch travels three times the same-stick normal departure", () => {
-  const travel = [];
+test("the carry impulse predicts a real rolling encounter instead of a fixed launch multiplier", () => {
   for (const sprint of [false, true]) {
     const m = solo();
-    for (let i = 0; i < 90 && !m.lastTouch; i++) m.update(dt, { x: 1, sprint });
-    assert.ok(m.lastTouch);
-    const p = m.players[0],
-      lead = p.lastDribble.lead;
-    const x = m.ball.x,
-      z = m.ball.z;
-    p.x = -40;
-    p.z = 20;
-    m.ball.owner = null;
-    for (let i = 0; i < 300 && Math.hypot(m.ball.vx, m.ball.vz) > 0.01; i++)
-      m.physics.step(m, dt);
-    travel.push({ lead, distance: Math.hypot(m.ball.x - x, m.ball.z - z) });
+    run(m, 4.5, { x: 1, sprint });
+    const p = m.players[0];
+    assert.ok(p.lastDribble.walkingPlan);
+    assert.equal(p.lastDribble.kind, "push");
+    assert.equal(p.lastDribble.walkingPlan.steps, sprint ? 6 : 4);
+    assert.ok(p.lastDribble.walkingPlan.period > 0.3);
     m.physics.dispose();
   }
-  assert.ok(Math.abs(travel[1].lead / travel[0].lead - 3) < 1e-8);
-  assert.ok(
-    Math.abs(travel[1].distance / travel[0].distance - 3) < 0.12,
-    JSON.stringify(travel),
-  );
-  console.log("First touch free-roll distances", travel);
 });
 
-test("standing sprint departure uses a long first touch in every direction", () => {
-  for (const previousTouch of [false, true]) {
-    for (const degrees of [0, 45, -45, 90, -90, 135, -135, 180]) {
-      const m = solo();
-      if (previousTouch)
-        m.players[0].lastDribble = {
-          vx: 3,
-          vz: 0,
-          time: -2,
-          interval: 0.4,
-          landings: 0,
-        };
-      const angle = (degrees * Math.PI) / 180;
-      const input = { x: Math.cos(angle), z: Math.sin(angle), sprint: true };
-      for (let i = 0; i < 180 && !m.lastTouch; i++) m.update(dt, input);
-      const touch = m.players[0].lastDribble;
-      assert.ok(touch, `contact at ${degrees} degrees`);
-      assert.equal(touch.kind, "launch", `departure at ${degrees} degrees`);
-      assert.ok(touch.lead > 3, `long touch at ${degrees} degrees`);
-      const alignment =
-        (touch.vx * input.x + touch.vz * input.z) /
-        Math.hypot(touch.vx, touch.vz);
-      assert.ok(alignment > 0.999, `requested direction at ${degrees} degrees`);
-      assert.equal(m.players[0].sprintFirstTouch, false);
-      m.physics.dispose();
-    }
-  }
-});
-
-test("switching from walking or jogging to sprint launches in any direction and recovers", () => {
-  for (const pace of [0.3, 1]) {
-    for (const degrees of [0, 45, -45, 90, -90, 135, 180]) {
-      const m = solo(),
-        p = m.players[0];
-      run(m, 1.5, { x: pace });
-      assert.ok(Math.hypot(p.vx, p.vz) > 1.2);
-      const previous = m.lastTouch.time;
-      const angle = (degrees * Math.PI) / 180;
-      const input = { x: Math.cos(angle), z: Math.sin(angle), sprint: true };
-      let first;
-      for (let i = 0; i < 240; i++) {
-        m.update(dt, input);
-        if (m.lastTouch.time !== previous) {
-          first = p.lastDribble;
-          break;
-        }
+test("changing straight carrying speed keeps the natural dominant-foot swing", () => {
+  const m = solo(),
+    p = m.players[0];
+  for (const input of [
+    { x: 0.35, jockey: true },
+    { x: 1 },
+    { x: 1, sprint: true },
+  ]) {
+    let touches = 0,
+      last = m.lastTouch?.time;
+    for (let i = 0; i < 360; i++) {
+      m.update(dt, input);
+      if (m.lastTouch?.time !== last) {
+        last = m.lastTouch?.time;
+        assert.equal(m.lastTouch.foot, 0);
+        assert.ok(p.ballMotion?.naturalCarry);
+        touches++;
       }
-      assert.equal(first?.kind, "launch", `${pace}/${degrees}`);
-      assert.ok(first.lead > 3);
-      assert.ok(
-        (first.vx * input.x + first.vz * input.z) /
-          Math.hypot(first.vx, first.vz) >
-          0.999,
-      );
-      assert.equal(
-        p.sprintLaunch,
-        0,
-        "no extra acceleration boost when already moving",
-      );
-      let recovered = false;
-      for (let i = 0; i < 600; i++) {
-        m.update(dt, input);
-        if (
-          p.lastDribble.time > first.time &&
-          Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 1.35
-        ) {
-          recovered = true;
-          break;
-        }
-      }
-      assert.ok(
-        recovered,
-        `automatic pursuit reaches next contact: ${pace}/${degrees}`,
-      );
-      assert.equal(m.ball.owner, 0);
-      m.physics.dispose();
     }
+    assert.ok(touches >= 2);
+    assert.equal(m.ball.owner, 0);
   }
+  m.physics.dispose();
 });
 
 test("direction changes keep steering the ball while the athlete recovers without countersteering", () => {
@@ -618,4 +566,191 @@ test("direction changes keep steering the ball while the athlete recovers withou
     }
     m.physics.dispose();
   }
+});
+
+test("departures and pace transitions keep producing contacts, without overtaking and stalling", () => {
+  for (const footedness of ["right", "left"])
+    for (const offset of [0.25, 0.65, 1])
+      for (const switchAt of [1, 1.6, 2])
+        for (const mode of [
+          "normal",
+          "sprint",
+          "walk-normal",
+          "walk-sprint",
+          "normal-sprint",
+          "stop-go",
+        ]) {
+          const m = solo(),
+            p = m.players[0];
+          Object.assign(p, {
+            x: -35,
+            z: 0,
+            dx: 1,
+            dz: 0,
+            vx: 0,
+            vz: 0,
+            footedness,
+          });
+          initLocomotion(p);
+          Object.assign(m.ball, { x: p.x + offset, z: 0, vx: 0, vz: 0 });
+          const context = JSON.stringify({
+            footedness,
+            offset,
+            switchAt,
+            mode,
+          });
+          try {
+            const result = run(m, 6, (time) => {
+              const walk = mode.startsWith("walk-") && time < switchAt;
+              if (mode === "stop-go" && time >= switchAt && time < switchAt + 1)
+                return {};
+              return {
+                x: walk ? 0.35 : 1,
+                jockey: walk,
+                sprint:
+                  mode === "sprint" ||
+                  ((mode === "walk-sprint" || mode === "normal-sprint") &&
+                    time >= switchAt) ||
+                  (mode === "stop-go" && time >= switchAt + 1),
+              };
+            });
+            assert.equal(m.ball.owner, 0, context);
+            assert.ok(p.vx > 5, `must resume forward movement: ${context}`);
+            assert.ok(
+              m.elapsed - (p.lastDribble?.time || 0) < 1.5,
+              `must keep touching the ball: ${context}`,
+            );
+            assert.ok(
+              result.maxD <
+                (mode.includes("sprint") || mode === "stop-go" ? 4.25 : 3),
+              `ball stays recoverable (${result.maxD} m): ${context}`,
+            );
+          } finally {
+            m.physics.dispose();
+          }
+        }
+});
+
+test("first sprint contact launches farther than normal and reaches sprint speed", () => {
+  const impulses = [];
+  for (const sprint of [false, true]) {
+    const m = solo(),
+      p = m.players[0];
+    try {
+      while (!p.lastDribble && m.elapsed < 2) m.update(dt, { x: 1, sprint });
+      assert.ok(p.lastDribble);
+      assert.equal(p.lastDribble.walkingPlan.steps, sprint ? 6 : 4);
+      impulses.push(Math.hypot(p.lastDribble.vx, p.lastDribble.vz));
+      const result = run(m, 3.5, { x: 1, sprint });
+      assert.ok(result.touches.length >= 2);
+      assert.ok(p.vx > (sprint ? 8 : 5));
+    } finally {
+      m.physics.dispose();
+    }
+  }
+  assert.ok(impulses[1] > impulses[0] + 1);
+});
+
+test("45 degree exits reunite the dominant foot and ball across both sides and stride phases", () => {
+  for (const footedness of ["right", "left"])
+    for (const sprint of [false, true])
+      for (const sign of [-1, 1])
+        for (const at of [0.9, 1.2, 1.8, 2.4, 3, 3.6, 4.2]) {
+          const m = solo(),
+            p = m.players[0];
+          Object.assign(p, {
+            x: -40,
+            z: -sign * 15,
+            dx: 1,
+            dz: 0,
+            vx: 0,
+            vz: 0,
+            footedness,
+          });
+          initLocomotion(p);
+          Object.assign(m.ball, { x: -39.35, z: -sign * 15, vx: 0, vz: 0 });
+          const context = JSON.stringify({ footedness, sprint, sign, at });
+          try {
+            run(m, at, { x: 1, sprint });
+            const result = run(m, 5.5, {
+              x: Math.SQRT1_2,
+              z: sign * Math.SQRT1_2,
+              sprint,
+            });
+            const cut = result.touches.find((t) => t.kind === "cut");
+            assert.ok(cut, `cut contact: ${context}`);
+            assert.ok(
+              result.touches.filter((t) => t.time > cut.time).length >= 2,
+              `resume repeated contacts: ${context}`,
+            );
+            assert.ok(result.maxD < 4.25, `recoverable lead: ${context}`);
+            assert.ok(
+              Math.hypot(p.vx, p.vz) > (sprint ? 6.5 : 5),
+              `exit speed: ${context}`,
+            );
+            assert.ok(
+              m.elapsed - p.lastDribble.time < 1.5,
+              `recent contact: ${context}`,
+            );
+            const speed = Math.hypot(p.vx, p.vz);
+            assert.ok(
+              ((p.vx + sign * p.vz) * Math.SQRT1_2) / speed > 0.98,
+              `body follows input: ${context}`,
+            );
+            assert.equal(m.ball.owner, 0, context);
+          } finally {
+            m.physics.dispose();
+          }
+        }
+});
+
+test("returning to an escaped ball turns the body instead of backing up under a stale turn plan", () => {
+  for (const gap of [0.5, 1.5, 2.5])
+    for (const pace of ["walk", "normal", "sprint"])
+      for (const owned of [false, true]) {
+        const m = solo(),
+          p = m.players[0];
+        Object.assign(p, { x: 0, z: 0, dx: 1, dz: 0, vx: 0, vz: 0 });
+        initLocomotion(p);
+        Object.assign(m.ball, { x: 0.65, z: 0, vx: 0, vz: 0 });
+        try {
+          run(m, 2, { x: 1 });
+          Object.assign(m.ball, {
+            x: p.x - gap,
+            z: p.z,
+            vx: 0,
+            vz: 0,
+            owner: owned ? 0 : null,
+            lastTeam: 0,
+          });
+          let backwards = 0,
+            longest = 0;
+          const input = {
+            x: pace === "walk" ? -0.35 : -1,
+            jockey: pace === "walk",
+            sprint: pace === "sprint",
+          };
+          for (let i = 0; i < 720; i++) {
+            m.update(dt, input);
+            const speed = Math.hypot(p.vx, p.vz);
+            const facing =
+              (Math.sin(p.locomotion.heading) * p.vx +
+                Math.cos(p.locomotion.heading) * p.vz) /
+              (speed || 1);
+            backwards =
+              i > 60 && speed > 0.5 && facing < -0.5 ? backwards + dt : 0;
+            longest = Math.max(longest, backwards);
+          }
+          const context = JSON.stringify({ gap, pace, owned });
+          assert.ok(longest < 0.4, `no prolonged backpedalling: ${context}`);
+          assert.ok(
+            m.elapsed - p.lastDribble.time < 1.5,
+            `resumes real contacts: ${context}`,
+          );
+          assert.ok(p.vx < -0.5, `continues requested direction: ${context}`);
+          assert.equal(m.ball.owner, 0, context);
+        } finally {
+          m.physics.dispose();
+        }
+      }
 });

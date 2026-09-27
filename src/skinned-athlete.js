@@ -1,3 +1,4 @@
+import { defensivePosture } from "./defensive-posture.js";
 import {
   bodyTouch,
   bodySurface,
@@ -13,6 +14,7 @@ import {
 import { bindKneeHinge, solveKneeHinge } from "./leg-hinge.js";
 import { poseAroundLeg } from "./altinha-around.js";
 import { motionAction } from "./action-state.js";
+import { naturalGait } from "./walking-carry.js";
 import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
@@ -109,7 +111,10 @@ function outfit(mesh, id) {
         vec3 kit = kitSkin;
         bool collar = abs(p.x) < 0.085 && p.y > 1.49;
         if (kitStyle.x > 0.5 && p.y > 0.93 && p.y < 1.59 && abs(p.x) < 0.48 && !collar) kit = kitShirt;
-        else if (p.y > 0.64 && p.y <= 0.95 && abs(p.x) < 0.27) kit = kitShorts;
+        else if (p.y > 0.64 && p.y <= (kitStyle.x > 0.5 ? 0.95 : 1.075) && abs(p.x) < 0.27) {
+          kit = kitShorts;
+          if (kitStyle.x < 0.5 && p.y > 1.045) kit *= 0.82;
+        }
         else if (kitStyle.y > 0.5 && p.y > 0.12 && p.y < 0.43 && abs(p.x) < 0.27) kit = kitShirt;
         else if (kitStyle.z > 0.5 && p.y <= 0.12) kit = kitBoot;
         if (kitStyle.x > .5 && p.y > 1.28 && p.y < 1.33 && abs(p.x) < .23) kit = mix(kitShirt, vec3(.95), .65);
@@ -318,6 +323,64 @@ export function buildSkinnedAthlete(assets, id) {
   };
 }
 export function animateSkinnedAthlete(rig, p, match) {
+  animateAthleteBase(rig, p, match);
+  const target = defensivePosture(p, match);
+  const elapsed = match.elapsed;
+  const dt = Math.max(
+    0,
+    Math.min(0.1, elapsed - (rig.defensePoseTime ?? elapsed - 1 / 60)),
+  );
+  if (elapsed < (rig.defensePoseTime ?? 0)) rig.defenseBlend = 0;
+  rig.defensePoseTime = elapsed;
+  rig.defenseBlend =
+    (rig.defenseBlend || 0) +
+    (target - (rig.defenseBlend || 0)) * (1 - Math.exp(-dt * 10));
+  // Action poses take priority immediately; ordinary locomotion remains sampled
+  // exactly as before, with the same world-space toe targets.
+  if (
+    p.altinhaPose ||
+    p.volleyPending ||
+    p.ballAction ||
+    p.header ||
+    p.slide ||
+    p.knockdown ||
+    p.bicycle ||
+    p.evade ||
+    p.celebration
+  ) {
+    rig.defenseBlend = 0;
+    return;
+  }
+  const amount = rig.defenseBlend;
+  if (amount < 0.001) return;
+  rig.root.updateMatrixWorld(true);
+  const toes = rig.legs.map((leg) => leg.toe.getWorldPosition(new T.Vector3()));
+  const heading = p.locomotion.heading;
+  const forward = new T.Vector3(Math.sin(heading), 0, Math.cos(heading));
+  const right = new T.Vector3(Math.cos(heading), 0, -Math.sin(heading));
+  rig.root.position.y -= 0.13 * amount;
+  rig.root.position.addScaledVector(forward, -0.035 * amount);
+  rig.root.updateMatrixWorld(true);
+  rotateWorld(
+    rig.pelvis,
+    new T.Quaternion().setFromAxisAngle(right, 0.07 * amount),
+  );
+  rotateWorld(
+    rig.torso,
+    new T.Quaternion().setFromAxisAngle(right, 0.22 * amount),
+  );
+  rotateWorld(
+    rig.head,
+    new T.Quaternion().setFromAxisAngle(right, -0.17 * amount),
+  );
+  rig.root.updateMatrixWorld(true);
+  rig.legs.forEach((leg, i) =>
+    correctLeg(leg.hip, leg.shin, leg.foot, leg.toe, toes[i], 0.3, forward),
+  );
+  rig.root.updateMatrixWorld(true);
+}
+
+function animateAthleteBase(rig, p, match) {
   if (rig.outfitMode !== match.variant) {
     rig.outfitMode = match.variant;
     const street = match.variant === "street",
@@ -646,9 +709,11 @@ export function animateSkinnedAthlete(rig, p, match) {
     const physical = l.feet.find((f) => (f.side > 0 ? 0 : 1) === i);
     const interacting = l.feet.some(
       (f) =>
-        f.special === "ball" ||
+        (f.special === "ball" && !p.ballMotion?.naturalCarry) ||
         f.special === "reach" ||
         f.special === "plant" ||
+        f.special === "turn-plant" ||
+        f.special === "turn-support" ||
         f.special === "windup",
     );
     if (
@@ -656,6 +721,8 @@ export function animateSkinnedAthlete(rig, p, match) {
       (physical.special === "ball" ||
         physical.special === "reach" ||
         physical.special === "plant" ||
+        physical.special === "turn-plant" ||
+        physical.special === "turn-support" ||
         physical.special === "windup" ||
         physical.contact)
     ) {
@@ -677,9 +744,17 @@ export function animateSkinnedAthlete(rig, p, match) {
       const toeOffset = sideFoot ? (Math.abs(opening) / 1.3) * 0.1 : 0;
       return {
         kneeDirection: new T.Vector3(
-          Math.sin(l.heading + opening * 0.7),
+          Math.sin(
+            p.ballMotion?.strideTouch && physical.special === "ball"
+              ? physical.heading
+              : l.heading + opening * 0.7,
+          ),
           0,
-          Math.cos(l.heading + opening * 0.7),
+          Math.cos(
+            p.ballMotion?.strideTouch && physical.special === "ball"
+              ? physical.heading
+              : l.heading + opening * 0.7,
+          ),
         ),
         target: new T.Vector3(
           physical.x + Math.sin(physical.heading) * toeOffset,
@@ -722,17 +797,32 @@ export function animateSkinnedAthlete(rig, p, match) {
       };
     }
     if (contacting) {
+      leg.walkRelease = null;
       if (!leg.anchor || leg.anchor.distanceTo(footPosition) > 0.38)
         leg.anchor = footPosition.clone();
       leg.anchor.y = 0.02;
       return { target: leg.anchor, limit: 0.8, support: true };
     }
+    if (naturalGait(p) && leg.anchor) {
+      leg.walkRelease = {
+        offset: leg.anchor.clone().sub(footPosition),
+        time: motion.time,
+      };
+    }
     leg.anchor = null;
     const target = footPosition.clone();
+    if (naturalGait(p) && leg.walkRelease) {
+      const cycle = motion.clip.count / motion.clip.fps;
+      const elapsed = (motion.time - leg.walkRelease.time + cycle) % cycle;
+      target.addScaledVector(
+        leg.walkRelease.offset,
+        1 - T.MathUtils.smoothstep(elapsed, 0, 0.22),
+      );
+    }
     target.x = p.x + (target.x - p.x) * (1 + 0.18 * charge);
     target.z = p.z + (target.z - p.z) * (1 + 0.18 * charge);
     target.y = Math.max(0.025, target.y);
-    return { target, limit: 0.25 };
+    return { target, limit: naturalGait(p) && leg.walkRelease ? 0.8 : 0.25 };
   });
   // Retargeted hips can sit too high for a planted toe during a transition.
   // Lower the pelvis as a unit before solving either leg, preserving leg lengths.

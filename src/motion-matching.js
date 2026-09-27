@@ -1,3 +1,5 @@
+import { preferredFoot } from "./footedness.js";
+import { naturalGait } from "./walking-carry.js";
 import { motionAction } from "./action-state.js";
 import * as T from "three";
 const clamp = T.MathUtils.clamp;
@@ -223,6 +225,10 @@ export class MotionController {
     this.strideScale =
       (this.strideScale ?? 0.5) +
       (strideTarget - (this.strideScale ?? 0.5)) * (1 - Math.exp(-dt * 10));
+    const gaitInPhase =
+      naturalGait(p) &&
+      ["walk", "jog", "sprint"].includes(this.gait) &&
+      !motionAction(p);
     const kicking = p.kick > 0;
     if ((charge && speed < 1.2) || kicking) {
       if (this.clip.name !== "kick")
@@ -241,9 +247,12 @@ export class MotionController {
       this.time += dt;
     } else {
       this.action = "locomotion";
+      if (gaitInPhase && this.clip.name !== this.gait)
+        this.transition(this.library.byName[this.gait], 0);
       if (
-        this.searchClock >= 0.1 ||
-        !["idle", "walk", "jog", "sprint"].includes(this.clip.name)
+        !gaitInPhase &&
+        (this.searchClock >= 0.1 ||
+          !["idle", "walk", "jog", "sprint"].includes(this.clip.name))
       ) {
         this.searchClock = 0;
         const heading = p.locomotion?.heading || 0;
@@ -276,6 +285,66 @@ export class MotionController {
         this.time = timeAtDistance(this.clip, this.distance);
       } else this.time += dt;
     }
+    if (gaitInPhase && this.action === "locomotion") {
+      // Keep the authored gait pose, but align its cycle to the physical
+      // steps. This applies equally with and without possession.
+      const dominant = preferredFoot(p);
+      const foot = p.locomotion.feet[dominant];
+      const clip = this.library.byName[this.gait];
+      if (
+        this.walkCycle?.name !== clip.name ||
+        this.walkCycle?.foot !== dominant
+      ) {
+        this.walkPhase = null;
+        const contacts = Array.from(
+          { length: clip.count },
+          (_, i) =>
+            this.library.features[clip.start + i].contacts[1 - dominant],
+        );
+        let lift = contacts.findIndex(
+          (v, i) => !v && contacts[(i + clip.count - 1) % clip.count],
+        );
+        const land = contacts.findIndex(
+          (v, i) => v && !contacts[(i + clip.count - 1) % clip.count],
+        );
+        if (clip.name !== "walk")
+          lift = (land - clip.count / 2 + clip.count) % clip.count;
+        this.walkCycle = {
+          name: clip.name,
+          foot: dominant,
+          lift,
+          land,
+          swing: (land - lift + clip.count) % clip.count,
+        };
+      }
+      const { lift, land, swing } = this.walkCycle;
+      const stance = Math.max(
+        0.12,
+        2 * (p.locomotion.actualStrideInterval || p.locomotion.strideInterval) -
+          foot.duration,
+      );
+      const frame = !foot.contact
+        ? lift + swing * foot.phase
+        : land + (clip.count - swing) * Math.min(1, foot.age / stance);
+      const desired = (frame % clip.count) / clip.fps;
+      if (this.walkPhase == null) this.walkPhase = desired;
+      else {
+        const cycle = clip.count / clip.fps;
+        const difference =
+          ((desired - this.walkPhase + cycle * 1.5) % cycle) - cycle * 0.5;
+        // A landing or shortened stance must not rewind the authored stride.
+        // Catch the physical phase progressively while continuing forwards.
+        const maxAdvance =
+          ((dt * cycle) /
+            (2 *
+              (p.locomotion.actualStrideInterval ||
+                p.locomotion.strideInterval))) *
+          1.8;
+        this.walkPhase =
+          (this.walkPhase + clamp(difference, 0, maxAdvance)) % cycle;
+      }
+      this.time = this.walkPhase;
+    } else this.walkPhase = null;
     this.previous.set(this.pose);
     this.feature = this.library.sample(this.clip, this.time, this.pose);
     this.transitionTime += dt;

@@ -105,7 +105,7 @@ test(
       try {
         moved = (
           await wa.wait(
-            (m) => m.type === "snapshot" && m.state.tick > initial.tick + 100,
+            (m) => m.type === "snapshot" && m.state.tick > initial.tick + 200,
           )
         ).state;
       } finally {

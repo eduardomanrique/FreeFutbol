@@ -280,7 +280,7 @@ test("Rapier uses matching surface rankings for rollout and bounce", () => {
   assert.ok(results.sand.roll < results.match.roll, JSON.stringify(results));
   assert.ok(results.court.roll > results.match.roll);
   assert.ok(results.street.roll > results.match.roll);
-  assert.ok(results.sand.height < results.match.height);
+  assert.ok(results.sand.height < results.match.height, JSON.stringify(results));
   assert.ok(results.court.height > results.match.height);
   assert.ok(results.street.height > results.match.height);
 });

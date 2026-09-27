@@ -61,11 +61,13 @@ test("long shots score unopposed; excessive power misses the goal on all surface
 test("player follows a loose own touch to complete the released shot with actual foot contact", () => {
   for (const free of [false, true]) {
     const { m, p } = solo();
-    for (let i = 0; i < 70; i++) m.update(1 / 120, { x: 1, sprint: true });
+    for (let i = 0; i < 360 && Math.hypot(p.vx, p.vz) < 6; i++)
+      m.update(1 / 120, { x: 1, sprint: true });
     m.beginAction("shoot", { x: 1 });
     m.releaseAction(0.7);
     Object.assign(m.ball, {
-      x: p.x + 2.2,
+      // Move beyond the actual moving-strike plan, including a longer sprint push.
+      x: p.x + Math.max(2.2, (p.movingStrike?.initialGap || 0) + 0.6),
       z: p.z,
       vx: 8,
       vz: 0,

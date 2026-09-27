@@ -47,7 +47,11 @@ export function planTurn(p, b, vx, vz) {
     request = Math.hypot(vx, vz),
     speed = Math.hypot(p.vx, p.vz);
   const wanted = Math.atan2(vx, vz);
-  if (now < (p.shotInputUntil || 0) && p.ballAction?.type === "shoot") {
+  if (
+    now < (p.shotInputUntil || 0) &&
+    p.ballAction?.type === "shoot" &&
+    p.ballAction.stage !== "charging"
+  ) {
     if (request > 0.15 && Math.abs(wrap(wanted - p.ballAction.heading)) > 0.5)
       p.ballAction.noTurn = true;
     p.turnAction = null;
@@ -72,15 +76,21 @@ export function planTurn(p, b, vx, vz) {
     now > (p.nextTurnAt || 0)
   ) {
     const origin =
-      Math.hypot(b.vx, b.vz) > 0.5
-        ? Math.atan2(b.vx, b.vz)
-        : Math.atan2(p.vx, p.vz);
+      p.lastDribble.walkingPlan &&
+      Math.hypot(p.lastDribble.vx, p.lastDribble.vz) > 0.5
+        ? Math.atan2(p.lastDribble.vx, p.lastDribble.vz)
+        : Math.hypot(b.vx, b.vz) > 0.5
+          ? Math.atan2(b.vx, b.vz)
+          : Math.atan2(p.vx, p.vz);
     let delta = wrap(wanted - origin);
     if (Math.abs(delta) > 0.5) {
       if (p.ballAction?.stage === "charging") p.ballAction.noTurn = false;
       const reverse = Math.abs(delta) > 2.75;
       if (reverse && preferredFoot(p) === 0 && delta < 0) delta += 2 * Math.PI;
       if (reverse && preferredFoot(p) === 1 && delta > 0) delta -= 2 * Math.PI;
+      // A walking sole turn pivots toward the leg that drags the ball.
+      if (reverse && p.walkRequested)
+        delta = (preferredFoot(p) === 0 ? -1 : 1) * Math.abs(delta);
       const split = !reverse && speed > 4.2 && Math.abs(delta) > 1.18;
       a = p.turnAction = {
         kind: reverse ? "reverse" : split ? "two-cuts" : "cut",
@@ -99,11 +109,21 @@ export function planTurn(p, b, vx, vz) {
           : 1,
         segment: 0,
         running: speed > 4.2,
+        soleRoll: reverse && !!p.walkRequested,
+        strideTouch:
+          (speed > 3 || Math.hypot(b.x - p.x, b.z - p.z) < 1.3) &&
+          !p.walkRequested &&
+          !p.jockey &&
+          !p.sprintRequested &&
+          delta < -0.5 &&
+          delta > -1.05 &&
+          preferredFoot(p) === 0,
         supportFoot: reverse ? 1 - preferredFoot(p) : delta > 0 ? 0 : 1,
         touchFoot: preferredFoot(p, delta > 0 ? 1 : 0),
         startLandings: feetDown(p),
         contactAt: null,
       };
+      if (a.soleRoll && p.ballMotion?.naturalCarry) p.ballMotion = null;
     }
   }
   if (!a) return { x: vx, z: vz };
@@ -113,13 +133,47 @@ export function planTurn(p, b, vx, vz) {
     a.bodyHeading = a.startHeading;
     return { x: Math.sin(a.origin) * request, z: Math.cos(a.origin) * request };
   }
+  if (a.strideTouch && a.phase === "plant") {
+    const lateral =
+      (b.x - p.x) * Math.cos(a.origin) - (b.z - p.z) * Math.sin(a.origin);
+    a.readyPlant = lateral < -0.1;
+  }
   exitPush(p, a);
   if (
     a.phase === "plant" &&
     p.locomotion.feet[a.supportFoot].contact &&
-    p.locomotion.feet[a.supportFoot].age > 0.025
+    p.locomotion.feet[a.supportFoot].age > 0.025 &&
+    (!a.strideTouch || a.planted)
   )
     a.phase = "touch";
+  if (a.soleRoll && a.contactAt != null) {
+    const elapsed = now - a.contactAt;
+    const progress = Math.min(1, elapsed / 0.95);
+    a.exitHeading = a.origin + a.delta;
+    a.bodyHeading =
+      a.origin + a.delta * progress * progress * (3 - 2 * progress);
+    const right = p.locomotion.feet[a.touchFoot];
+    const left = p.locomotion.feet[a.supportFoot];
+    if (right.contact && !p.ballMotion && a.phase === "settle") {
+      a.phase = "pivot";
+      a.leftLandings = left.landings;
+      p.locomotion.nextFoot = a.supportFoot;
+    }
+    if (
+      a.phase === "pivot" &&
+      left.landings > a.leftLandings &&
+      progress >= 1
+    ) {
+      p.nextTurnAt = now + 0.3;
+      p.turnAction = null;
+      return { x: vx, z: vz };
+    }
+    const pace = a.phase === "pivot" ? Math.min(request, 0.7) : 0;
+    return {
+      x: Math.sin(a.exitHeading) * pace,
+      z: Math.cos(a.exitHeading) * pace,
+    };
+  }
   if (a.phase === "settle") {
     const steps = feetDown(p) - a.contactLandings;
     a.shortSteps = steps;
@@ -131,11 +185,17 @@ export function planTurn(p, b, vx, vz) {
       ? a.origin + a.delta
       : a.origin + (a.delta * Math.min(a.segment + 1, a.segments)) / a.segments;
   a.exitHeading = heading;
-  a.bodyHeading = ["plant", "touch"].includes(a.phase)
-    ? a.origin + (a.delta * (a.segment + 0.12)) / a.segments
-    : a.kind === "reverse" && ["settle", "touch"].includes(a.phase)
-      ? a.origin + a.delta * 0.5
-      : heading;
+  a.bodyHeading =
+    a.soleRoll && a.contactAt == null
+      ? a.origin
+      : ["plant", "touch"].includes(a.phase)
+        ? a.origin +
+          (a.delta *
+            (a.segment + (a.strideTouch ? (a.planted ? 0.3 : 0) : 0.12))) /
+            a.segments
+        : a.kind === "reverse" && ["settle", "touch"].includes(a.phase)
+          ? a.origin + a.delta * 0.5
+          : heading;
   if (a.phase === "exit" || a.phase === "pivot") {
     if (
       now - a.contactAt > 0.55 &&
@@ -156,8 +216,13 @@ export function turnContact(p) {
   a.contactLandings = feetDown(p);
   if (a.kind !== "reverse") {
     a.pendingPush = { heading: a.exitHeading };
-    exitPush(p, a);
+    if (p.walkRequested || p.shield || Math.abs(a.delta) >= 1.05)
+      exitPush(p, a);
+    // Ball contact runs after preparePlayers. Apply the support impulse on
+    // the next locomotion tick, before Rapier receives the player velocity;
+    // otherwise the world step overwrites the redirected velocity immediately.
   }
+  if (a.soleRoll) a.leftLandings = p.locomotion.feet[a.supportFoot].landings;
   a.segment++;
   if (a.kind === "reverse") a.phase = "settle";
   else a.phase = a.segment < a.segments ? "plant" : "exit";

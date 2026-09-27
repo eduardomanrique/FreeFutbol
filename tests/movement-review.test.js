@@ -362,3 +362,269 @@ test("body faces the ball only for close marking, never at a distance", async ()
   assert.equal(p.locomotion.defensiveFacing, null);
   m.physics.dispose();
 });
+
+test("normal right cut plants left of the COM and strikes during the descending right step", () => {
+  const { m, p } = fixture();
+  step(m, 144, { x: 0.35, jockey: false });
+  let anchor = null,
+    folded = false,
+    contact = false,
+    diagonalSamples = 0;
+  for (let i = 0; i < 240; i++) {
+    m.update(dt, {
+      x: 0.35 * Math.SQRT1_2,
+      z: 0.35 * Math.SQRT1_2,
+      jockey: false,
+    });
+    const a = p.turnAction,
+      motion = p.ballMotion;
+    if (!a?.strideTouch) continue;
+    const left = p.locomotion.feet[1],
+      right = p.locomotion.feet[0];
+    if (left.special === "turn-support" && left.contact) {
+      if (!anchor) {
+        anchor = { x: left.x, z: left.z };
+        const lateral =
+          (left.x - p.x) * Math.cos(a.origin) -
+          (left.z - p.z) * Math.sin(a.origin);
+        assert.ok(lateral > 0.2, `left support offset ${lateral}`);
+      }
+      assert.ok(Math.hypot(left.x - anchor.x, left.z - anchor.z) < 1e-8);
+    }
+    if (motion?.strideTouch && right.y > 0.32 && !motion.hit) {
+      folded = true;
+      const ballSide =
+        (m.ball.x - p.x) * Math.cos(a.origin) -
+        (m.ball.z - p.z) * Math.sin(a.origin);
+      assert.ok(
+        ballSide < -0.08,
+        `ball must already be to the right: ${ballSide}`,
+      );
+    }
+    if (motion?.strideTouch && right.phase > 0.32 && right.phase < 0.6) {
+      const dx = right.x - right.previous.x,
+        dz = right.z - right.previous.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 1e-5) {
+        assert.ok(
+          (dx * Math.sin(a.exitHeading) + dz * Math.cos(a.exitHeading)) / d >
+            0.995,
+          "the extending foot must already travel along the exit diagonal before contact",
+        );
+        diagonalSamples++;
+      }
+    }
+    if (motion?.strideTouch && motion.hit) {
+      assert.equal(motion.foot, 0);
+      assert.ok(right.phase >= 0.6);
+      assert.ok(right.y < 0.2);
+      contact = true;
+      break;
+    }
+  }
+  assert.ok(
+    anchor && folded && contact && diagonalSamples > 2,
+    JSON.stringify({ anchor, folded, contact }),
+  );
+  assert.equal(m.ball.owner, 0);
+  m.physics.dispose();
+});
+
+test("stride cut is reserved for normal movement, excluding LT and RT", () => {
+  for (const mode of ["normal", "LT", "RT"]) {
+    const { m, p } = fixture();
+    Object.assign(p, {
+      vx: 2,
+      vz: 0,
+      lastDribble: { vx: 2, vz: 0 },
+      walkRequested: mode === "LT",
+      jockey: mode === "LT",
+      sprintRequested: mode === "RT",
+    });
+    Object.assign(m.ball, { vx: 2, vz: 0 });
+    p.locomotion.time = 0.1;
+    planTurn(p, m.ball, 2, 2);
+    assert.equal(p.turnAction.strideTouch, mode === "normal");
+    m.physics.dispose();
+  }
+});
+
+test("LT walking touches only with the dominant foot after two steps", () => {
+  for (const footedness of ["right", "left"]) {
+    const { m, p } = fixture("match", footedness);
+    let previous = null,
+      touches = 0;
+    for (let i = 0; i < 600; i++) {
+      m.update(dt, { x: 0.35, jockey: true });
+      if (m.lastTouch && m.lastTouch.time !== previous) {
+        previous = m.lastTouch.time;
+        assert.equal(m.lastTouch.foot, footedness === "right" ? 0 : 1);
+        if (touches)
+          assert.ok(
+            m.lastTouch.stepsSince >= 2,
+            `steps since touch: ${m.lastTouch.stepsSince}`,
+          );
+        touches++;
+      }
+    }
+    assert.ok(touches >= 3, `${footedness}: ${touches} touches`);
+    assert.equal(m.ball.owner, 0);
+    m.physics.dispose();
+  }
+});
+
+test("walking contacts keep ordinary stride reach and plan the next rolling encounter", () => {
+  const { m, p } = fixture();
+  let naturalFrames = 0,
+    plans = 0,
+    lastTime = null,
+    maxGap = 0;
+  for (let i = 0; i < 720; i++) {
+    m.update(dt, { x: 0.35, jockey: true });
+    if (p.ballMotion?.naturalCarry) {
+      naturalFrames++;
+      const f = p.locomotion.feet[p.ballMotion.foot];
+      assert.ok(
+        (f.x - p.x) * Math.sin(p.locomotion.heading) +
+          (f.z - p.z) * Math.cos(p.locomotion.heading) <
+          0.35,
+        "walking must not extend forward to reach a distant ball",
+      );
+    }
+    if (p.lastDribble?.walkingPlan && p.lastDribble.time !== lastTime) {
+      if (lastTime != null)
+        maxGap = Math.max(maxGap, p.lastDribble.time - lastTime);
+      lastTime = p.lastDribble.time;
+      plans++;
+    }
+  }
+  assert.ok(
+    naturalFrames > 30 && plans >= 5,
+    JSON.stringify({ naturalFrames, plans }),
+  );
+  assert.ok(maxGap < 1.2, `lost gait rhythm: ${maxGap}`);
+  assert.ok(Math.hypot(m.ball.x - p.x, m.ball.z - p.z) < 0.9);
+  m.physics.dispose();
+});
+
+test("natural carrying uses the dominant stride every 2, 4 and 6 steps", () => {
+  for (const footedness of ["right", "left"]) {
+    for (const [input, expected] of [
+      [{ x: 0.35, jockey: true }, 2],
+      [{ x: 1 }, 4],
+      [{ x: 1, sprint: true }, 6],
+    ]) {
+      const { m, p } = fixture("match", footedness);
+      p.x = -40;
+      m.ball.x = -39.4;
+      initLocomotion(p);
+      let last = null,
+        contacts = 0;
+      for (let i = 0; i < 900; i++) {
+        m.update(dt, input);
+        if (p.ballMotion?.naturalCarry) {
+          assert.equal(
+            p.locomotion.feet[p.ballMotion.foot].special ?? null,
+            null,
+            "a touch must not change the gait's physical swing or support",
+          );
+        }
+        if (i > 600 && m.lastTouch?.time !== last) {
+          if (last != null) {
+            assert.equal(m.lastTouch.foot, footedness === "right" ? 0 : 1);
+            assert.equal(m.lastTouch.stepsSince, expected);
+            assert.ok(p.lastDribble.walkingPlan);
+            contacts++;
+          }
+          last = m.lastTouch?.time;
+        }
+      }
+      assert.ok(contacts >= 2, `${footedness}/${expected}: ${contacts}`);
+      assert.equal(m.ball.owner, 0);
+      m.physics.dispose();
+    }
+  }
+});
+
+test("walking 180 stops under the dominant sole, rolls back, then plants right-left before carrying", () => {
+  const { m, p } = fixture();
+  step(m, 144, { x: 0.3, jockey: true });
+  let stopped = null,
+    pulled = false,
+    resumed = false,
+    last = null;
+  let landings = p.locomotion.feet.map((f) => f.landings);
+  const order = [];
+  for (let i = 0; i < 480; i++) {
+    m.update(dt, { x: -0.35, jockey: true });
+    if (p.lastDribble?.kind === "sole-stop" && !stopped) {
+      assert.ok(
+        p.turnAction.delta < 0,
+        "right-foot sole turn rotates toward the player’s right",
+      );
+      stopped = { x: m.ball.x, z: m.ball.z, time: p.lastDribble.time };
+      landings = p.locomotion.feet.map((f) => f.landings);
+      assert.ok(Math.hypot(m.ball.vx, m.ball.vz) < 0.01);
+    }
+    if (stopped && p.turnAction?.soleRoll) {
+      pulled ||= m.ball.x < stopped.x - 0.4;
+      p.locomotion.feet.forEach((f, index) => {
+        if (f.landings > landings[index]) order.push(index);
+      });
+      landings = p.locomotion.feet.map((f) => f.landings);
+    }
+    if (stopped && !p.turnAction && m.lastTouch?.time > stopped.time) {
+      assert.equal(m.lastTouch.foot, 0);
+      assert.ok(p.ballMotion?.naturalCarry);
+      assert.ok(Math.cos(p.locomotion.heading - Math.PI * 1.5) > 0.9);
+      resumed = true;
+      break;
+    }
+  }
+  assert.ok(stopped && pulled && resumed);
+  assert.deepEqual(order.slice(0, 2), [0, 1]);
+  assert.equal(m.ball.owner, 0);
+  m.physics.dispose();
+});
+
+test("defensive posture requires an opponent ahead toward the protected goal; volley uses team possession", async () => {
+  const { defensivePosture } = await import("../src/defensive-posture.js");
+  const p = {
+    id: 0,
+    team: 0,
+    x: -10,
+    z: 0,
+    locomotion: { heading: Math.PI / 2 },
+  };
+  const q = { id: 1, team: 1, x: -7, z: 0 };
+  const m = { field: { halfLength: 46 }, ball: { owner: 1 }, players: [p, q] };
+  const before = structuredClone(p);
+  assert.equal(defensivePosture(p, m), 1);
+  assert.deepEqual(p, before, "pose selection never changes movement state");
+  q.x = -17;
+  assert.equal(defensivePosture(p, m), 0, "opponent behind");
+  q.x = -2;
+  assert.equal(defensivePosture(p, m), 0, "opponent distant");
+  q.x = -7;
+  q.team = 0;
+  assert.equal(defensivePosture(p, m), 0, "own team has possession");
+  m.field.footvolley = true;
+  m.footvolley = { phase: "serve", serving: 1, lastTeam: null };
+  m.ball.owner = null;
+  assert.equal(defensivePosture(p, m), 1, "ready before opponent serves");
+  m.footvolley = { phase: "rally", lastTeam: 1 };
+  assert.equal(
+    defensivePosture(p, m),
+    1,
+    "receiving team stays ready anywhere",
+  );
+  m.footvolley.lastTeam = 0;
+  assert.equal(defensivePosture(p, m), 0);
+  m.footvolley.lastTeam = 1;
+  p.altinhaPose = { kind: "head" };
+  assert.equal(
+    defensivePosture(p, m),
+    0,
+    "preserve the reception/jump gesture",
+  );
+});

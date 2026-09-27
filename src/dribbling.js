@@ -1,3 +1,11 @@
+import { nextStrideContact, cutCarryImpulse } from "./carry-prediction.js";
+import {
+  naturalCarry,
+  naturalImpulse,
+  carrySteps,
+  naturalCarryVelocity,
+} from "./walking-carry.js";
+import { preferredFoot } from "./footedness.js";
 import { motionAction } from "./action-state.js";
 import { rollingResistance } from "./surfaces.js";
 import { ROLL_DECELERATION, stepBallMotion } from "./ball-physics.js";
@@ -23,6 +31,25 @@ export function touchRhythm(speed, sprint = false) {
   };
 }
 export function guideDribbler(p, b, vx, vz) {
+  const bx = b.x - p.x,
+    bz = b.z - p.z;
+  const gap = Math.hypot(bx, bz),
+    inputSpeed = Math.hypot(vx, vz);
+  const heading = p.locomotion?.heading ?? Math.atan2(p.dx, p.dz);
+  if (
+    p.lastDribble &&
+    !p.shield &&
+    p.turnAction?.contactAt == null &&
+    gap > 0.65 &&
+    inputSpeed > 0.1 &&
+    bx * Math.sin(heading) + bz * Math.cos(heading) < -0.25 &&
+    bx * vx + bz * vz > gap * inputSpeed * 0.5
+  ) {
+    // The ball has already escaped behind the runner. Recover it as a new
+    // approach, rather than holding the old forward-facing sole-turn plan.
+    p.turnAction = null;
+    p.lastDribble = null;
+  }
   const turnPlan = planTurn(p, b, vx, vz);
   vx = turnPlan.x;
   vz = turnPlan.z;
@@ -43,6 +70,7 @@ export function guideDribbler(p, b, vx, vz) {
       ? (vx * p.vx + vz * p.vz) / (requested * speed)
       : 1;
   const stopping = requested < 0.1;
+  if (stopping && p.ballMotion?.naturalCarry) p.ballMotion = null;
   const wasRecovering = ["turn", "recover"].includes(p.dribbleState?.mode);
   const recovering =
     (wasRecovering &&
@@ -53,6 +81,50 @@ export function guideDribbler(p, b, vx, vz) {
     turn < 0.75 ||
     (stopping && distance > 0.6);
   p.dribbleIntent = { x: vx, z: vz };
+  const cut = p.turnAction;
+  if (cut?.soleRoll && cut.contactAt != null) return { x: vx, z: vz };
+  if (cut?.strideTouch && ["plant", "touch"].includes(cut.phase)) {
+    // Approach to the left of the ball, so the right step can pass through it
+    // along the exit diagonal instead of reaching straight ahead first.
+    const tx =
+      future.x - Math.sin(cut.origin) * 0.38 + Math.cos(cut.origin) * 0.3;
+    const tz =
+      future.z - Math.cos(cut.origin) * 0.38 - Math.sin(cut.origin) * 0.3;
+    if (speed > 3 && !cut.planted) {
+      const lateralError =
+        (tx - p.x) * Math.cos(cut.origin) - (tz - p.z) * Math.sin(cut.origin);
+      const lateralSpeed = clamp(lateralError * 5, -1.4, 1.4);
+      p.dribbleState = { mode: "turn", distance, ahead, lateral };
+      const along =
+        (future.x - p.x) * Math.sin(cut.origin) +
+        (future.z - p.z) * Math.cos(cut.origin);
+      const pace = Math.min(
+        speed,
+        Math.max(-1.5, Math.hypot(b.vx, b.vz) + (along - 0.38) * 3),
+      );
+      return {
+        x: Math.sin(cut.origin) * pace + Math.cos(cut.origin) * lateralSpeed,
+        z: Math.cos(cut.origin) * pace - Math.sin(cut.origin) * lateralSpeed,
+      };
+    }
+    if (cut.planted) {
+      const pace = Math.max(0.8, speed, requested * 0.75);
+      p.dribbleState = { mode: "turn", distance, ahead, lateral };
+      return {
+        x: Math.sin(cut.exitHeading) * pace,
+        z: Math.cos(cut.exitHeading) * pace,
+      };
+    }
+    const dx = tx - p.x,
+      dz = tz - p.z;
+    const distanceToSlot = length(dx, dz);
+    const pace = Math.min(Math.max(1.1, requested), distanceToSlot * 5);
+    p.dribbleState = { mode: "turn", distance, ahead, lateral };
+    return {
+      x: (dx / (distanceToSlot || 1)) * pace,
+      z: (dz / (distanceToSlot || 1)) * pace,
+    };
+  }
   if (p.turnAction?.phase === "approach") {
     const tx = future.x - p.x,
       tz = future.z - p.z;
@@ -112,6 +184,9 @@ export function guideDribbler(p, b, vx, vz) {
     ahead,
     lateral,
   };
+  if (naturalCarry(p) && distance < 4) {
+    return naturalCarryVelocity(p, b, vx, vz);
+  }
   if (stopping && length(b.vx, b.vz) < 0.08 && distance <= 1.12)
     return { x: 0, z: 0 };
   if (
@@ -201,6 +276,24 @@ export function guideDribbler(p, b, vx, vz) {
   return { x: d ? (tx / d) * v : 0, z: d ? (tz / d) * v : 0 };
 }
 export function dribbleImpulse(p, b) {
+  if (p.turnAction?.soleRoll && p.turnAction.phase === "touch")
+    return { vx: 0, vz: 0, interval: 1.1, lead: 0, kind: "sole-stop" };
+  const cut = p.turnAction;
+  if (
+    !p.walkRequested &&
+    !p.shield &&
+    cut?.kind === "cut" &&
+    Math.abs(cut.delta) < 1.05 &&
+    cut.phase === "touch"
+  ) {
+    return cutCarryImpulse(p, b, cut.exitHeading, carrySteps(p));
+  }
+  if (naturalCarry(p) && p.turnAction?.phase !== "touch")
+    return naturalImpulse(
+      p,
+      b,
+      p.walkRequested ? null : nextStrideContact(p, carrySteps(p)),
+    );
   const speed = length(p.vx, p.vz),
     intent = p.dribbleIntent || p.moveIntent || { x: 0, z: 0 };
   const requested = length(intent.x, intent.z),
@@ -389,6 +482,19 @@ export function touchDue(p, b, time, horizon) {
     p.dribbleState?.mode === "turn" ||
     p.dribbleState?.mode === "recover" ||
     (requested < 0.1 && length(b.vx, b.vz) > 0.3);
+  // A stop/cut is not a completed carry cycle. Waiting four or six landings
+  // after a sole stop can deadlock the very first step of the restart.
+  if (naturalCarry(p) && p.lastDribble.walkingPlan) {
+    const landings = p.locomotion.feet.reduce(
+      (sum, foot) => sum + foot.landings,
+      0,
+    );
+    if (
+      landings - (p.lastDribble.landings ?? 0) <
+      (p.lastDribble.walkingPlan?.steps ?? carrySteps(p))
+    )
+      return false;
+  }
   const next = p.lastDribble.time + p.lastDribble.interval;
   return (
     time + horizon >= next ||

@@ -185,7 +185,11 @@ export class FootballPhysics {
         this.players[i].body.setTranslation({ x: p.x, y: 0.9, z: p.z }, true);
         this.players[i].body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       });
-    const ground = b.y <= 0.115 && Math.abs(b.vy) < 0.2;
+    if (b.y > 0.14 || b.vy > 1) this.ballRolling = false;
+    const ground =
+      b.y <= 0.115 &&
+      (Math.abs(b.vy) < 0.2 || (this.ballRolling && b.vy <= 0 && b.vy > -1));
+    if (ground) this.ballRolling = true;
     let speed = Math.hypot(b.vx, b.vz),
       vx = b.vx,
       vz = b.vz,
@@ -269,7 +273,12 @@ export class FootballPhysics {
     b.vx = v.x;
     b.vy = v.y;
     b.vz = v.z;
-    if (b.y <= 0.115 && Math.abs(b.vy) < 0.25) {
+    // A rolling ball may retain a small downward solver velocity after contact.
+    // Keep grass resistance active without swallowing a genuine airborne bounce.
+    if (
+      b.y <= 0.115 &&
+      (Math.abs(b.vy) < 0.25 || (this.ballRolling && b.vy <= 0 && b.vy > -1))
+    ) {
       b.y = 0.11;
       b.vy = 0;
       if (Math.hypot(b.vx, b.vz) < 0.06) {

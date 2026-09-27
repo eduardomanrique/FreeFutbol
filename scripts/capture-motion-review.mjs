@@ -24,6 +24,10 @@ function caption(stage) {
     plant: "Apoio para a virada",
     touch: "Preparação do toque",
     settle: "Passos curtos de freada",
+    "sole-stop": "Sola direita para a bola",
+    "sole-pull": "Puxada para trás e giro à direita",
+    "right-plant": "Pé direito pousa primeiro",
+    "left-step": "Pé esquerdo completa o giro",
     pivot: "Conclusão do giro",
     exit: "Saída na nova direção",
     prepare: "Preparação",
@@ -165,6 +169,8 @@ try {
           .filter((g) => !manifest.some((n) => n.id === g.id))
           .concat(manifest)
       : manifest;
+  for (const g of all)
+    g.title = specs.find((s) => s.id === g.id)?.title || g.title;
   all.sort(
     (a, b) =>
       specs.findIndex((g) => g.id === a.id) -
@@ -178,10 +184,16 @@ try {
     path.join(root, "manifest.json"),
     JSON.stringify(all, null, 2),
   );
+  const clipMarkup = (g) => {
+    const file = `${g.id}/slow-motion.mp4`;
+    const full = path.join(root, file);
+    if (!fs.existsSync(full)) return "";
+    return `<video controls preload="none" playsinline style="display:block;width:min(840px,100%);margin:12px 0" poster="${g.id}/01.png"><source src="${file}?v=${Math.trunc(fs.statSync(full).mtimeMs)}" type="video/mp4"></video><p>Câmera lenta · 0,5× · <a href="${file}" download>Salvar clipe MP4</a></p>`;
+  };
   const cards = all
     .map(
       (g) =>
-        `<section id="${g.id}"><h2>${g.title}</h2><div class="frames">${g.times
+        `<section id="${g.id}"><h2>${g.title}</h2>${clipMarkup(g)}<div class="frames">${g.times
           .map((t, i) => {
             const file = `${g.id}/${String(i + 1).padStart(2, "0")}.png`;
             const version = Math.trunc(
@@ -195,7 +207,7 @@ try {
     .join("");
   fs.writeFileSync(
     path.join(root, "index.html"),
-    `<!doctype html><html lang="pt"><meta charset="utf-8"><title>CAMPO · revisão dos movimentos</title><style>body{margin:0;background:#10241d;color:#edf4e9;font:16px system-ui}header{padding:22px 24px;border-bottom:1px solid #44634e}h1{margin:0;font-size:26px}p{color:#bfd1c0;max-width:1000px;line-height:1.5}main{padding:18px 24px}section{margin-bottom:36px}h2{font-size:20px}.frames{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px}figure{margin:0;flex:0 0 320px;background:#1b3427;border:1px solid #41664b}img{display:block;width:320px}figcaption{padding:9px 12px;font-size:13px;color:#d7e5d2;line-height:1.5}nav{display:flex;gap:12px;flex-wrap:wrap}a{color:#bde59f}</style><header><h1>CAMPO · movimentos quadro a quadro</h1><p>${all.length} sequências · ${all.reduce((n, g) => n + g.times.length, 0)} quadros · todos os jogadores destros.<br>Capturas de ações executadas pela simulação, com bola e contato reais. A posição inicial é preparada para cada cenário. Cada faixa mostra a ação, o contato e a recuperação; clique no quadro para ampliar.</p><nav>${all.map((g) => `<a href="#${g.id}">${g.title}</a>`).join("")}</nav></header><main>${cards}</main></html>`,
+    `<!doctype html><html lang="pt"><meta charset="utf-8"><title>CAMPO · revisão dos movimentos</title><style>body{margin:0;background:#10241d;color:#edf4e9;font:16px system-ui}header{padding:22px 24px;border-bottom:1px solid #44634e}h1{margin:0;font-size:26px}p{color:#bfd1c0;max-width:1000px;line-height:1.5}main{padding:18px 24px}section{margin-bottom:36px}h2{font-size:20px}.frames{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px}figure{margin:0;flex:0 0 320px;background:#1b3427;border:1px solid #41664b}img{display:block;width:320px}figcaption{padding:9px 12px;font-size:13px;color:#d7e5d2;line-height:1.5}nav{display:flex;gap:12px;flex-wrap:wrap}a{color:#bde59f}</style><header><h1>CAMPO · movimentos quadro a quadro</h1><p>${all.length} sequências · ${all.reduce((n, g) => n + g.times.length, 0)} quadros · jogadores destros, salvo indicação de canhoto.<br>Capturas de ações executadas pela simulação, com bola e contato reais. A posição inicial é preparada para cada cenário. Cada faixa mostra a ação, o contato e a recuperação; clique no quadro para ampliar.</p><nav>${all.map((g) => `<a href="#${g.id}">${g.title}</a>`).join("")}</nav></header><main>${cards}</main></html>`,
   );
   console.log(`Galeria: ${root}/index.html`);
 } finally {
