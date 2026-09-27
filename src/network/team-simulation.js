@@ -199,7 +199,7 @@ export class TeamSimulation {
     const age = force
       ? 0
       : Math.max(0, Math.min(0.2, m.elapsed - state.elapsed));
-    // Short flight prediction only. Authority checkpoints resolve Rapier/contacts.
+    // Short flight prediction only. Authority checkpoints resolve Havok/contacts.
     if (predicted.owner === null)
       for (let t = 0; t < age; t += 1 / 120)
         stepBallMotion(predicted, Math.min(1 / 120, age - t));

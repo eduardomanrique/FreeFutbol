@@ -1,5 +1,5 @@
 import { TEAM_PROTOCOL, validTeamPacket } from "../shared/team-protocol.js";
-// No Match, Rapier, worker, or per-frame simulation is imported here.
+// No Match, Havok, worker, or per-frame simulation is imported here.
 export class TeamRelay {
   constructor(duration, now = () => performance.now()) {
     this.duration = duration;

@@ -11,7 +11,7 @@ page.on('response',r=>{if(r.status()>=400)errors.push(r.status()+' '+r.url());})
 await page.goto(url);await page.waitForFunction(()=>window.render_game_to_text,{timeout:60000});
 await page.click('#start-btn');await page.keyboard.down('ArrowRight');await page.waitForTimeout(800);await page.keyboard.up('ArrowRight');
 const state=await page.evaluate(()=>JSON.parse(window.render_game_to_text()));
-assert.equal(state.mode,'playing');assert.equal(state.physics.engine,'Rapier');assert.equal(state.graphics.athletes,'skinned');assert.equal(state.physics.capsules,22);assert.ok(state.animation.searches>0);assert.deepEqual(errors,[]);
+assert.equal(state.mode,'playing');assert.equal(state.physics.engine,'Havok');assert.equal(state.graphics.athletes,'skinned');assert.equal(state.physics.capsules,22);assert.ok(state.animation.searches>0);assert.deepEqual(errors,[]);
 fs.mkdirSync('output/deploy',{recursive:true});await page.screenshot({path:'output/deploy/site.png'});
 console.log(JSON.stringify({url,result:'passed',errors,physics:state.physics,graphics:state.graphics}));
 }finally{await browser.close();}

@@ -1,6 +1,6 @@
 # CAMPO 26
 
-Protótipo original de futebol 3D para navegador, com equipes fictícias. Three.js/WebGL, Rapier/WASM e Vite. Oferece partida offline, treino e multiplayer privado por código com backend autoritativo Node.js. Frontend e backend multiplayer publicados em19/09/2026.
+Protótipo original de futebol 3D para navegador, com equipes fictícias. Babylon.js/WebGL, Havok/WASM e Vite. Oferece partida offline, treino e multiplayer privado por código com backend autoritativo Node.js. Este branch migra os motores localmente; não foi publicado.
 
 ## Executar
 
@@ -69,7 +69,7 @@ A detecção usa o layout `standard` do navegador ou o perfil aprendido. Foi rem
 
 Passes e chutes carregam ao segurar e são agendados ao soltar; a bola sai no contato da perna livre, não no evento do botão. Comando de passe/chute antes de a bola chegar fica guardado por1s desde o pressionamento. O jogador prepara o gesto na chegada e bate de primeira no contato do pé, sem dominar ou parar a bola antes; se não alcançar dentro do prazo, cancela. Vale para o atleta selecionado e cancela com troca, pausa ou reinício. No controle físico, Chute/Alto contra posse adversária continuam desarme/carrinho. No touch, o modo defensivo mostra Trocar e Desarme. Durante um passe do próprio time, os botões ofensivos permanecem disponíveis para antecipar a ação. Ao iniciar passe/chute, a assistência assume a aproximação e o posicionamento para o contato; a direção normal volta após a batida ou cancelamento. Durante a carga com posse, o direcional ajusta a mira. Passes compensam a distância e o atrito; a carga aumenta seu ritmo. Chutes de frente variam de5,4 a27m/s sem embalo (40% menos força); de costas usam15% da força anterior, chegando a6,75m/s. Ângulos intermediários reduzem força e precisão progressivamente. Passes altos têm arco acima da altura de um jogador, inclusive com pouca carga. Gestos incluem giro, calcanhar e finalização comprometida com queda, apoio da mão e recuperação.
 
-A bola permanece dinâmica durante a condução. O portador dá impulsos em contatos discretos dos pés; entre eles a bola conserva inércia e sofre atrito. Resistência explícita de5,8m/s² mais termo dependente da velocidade. No teste Rapier isolado, bolas a5/10m/s param em1,63/6,84m. Chutes fortes ainda podem sair antes de parar; esses valores são calibração de gameplay.
+A bola permanece dinâmica durante a condução. O portador dá impulsos em contatos discretos dos pés; entre eles a bola conserva inércia e sofre atrito. Resistência explícita de5,8m/s² mais termo dependente da velocidade. No teste Havok isolado, bolas a 5/10 m/s param em 2,03/7,82 m, em acordo com a previsão de passes. Chutes fortes ainda podem sair antes de parar; esses valores são calibração de gameplay.
 
 Domínio automático de **bola livre** em todas as faixas enquanto alcançável: corpo99,9%, perto98%, médio95%, longo90%. Parado/andando, o jogador se vira para a bola; médio estende uma perna e longo aproxima com passada. Não exige direcional, mas respeita comando para sair do alcance. Chances por tentativa, sem novo sorteio a cada quadro. Goleiros mantêm regras separadas.
 
@@ -81,11 +81,19 @@ O ritmo dos jogadores foi aumentado: deslocamento 15% mais rápido, propulsão e
 
 A locomoção usa um modelo físico simplificado de centro de massa (78 kg), gravidade, forças de apoio e limite de aderência. Aceleração e frenagem dependem dos pés em contato; durante a fase aérea não há força horizontal de propulsão. A pose visual vem de clips retargetados para um personagem com skin e 65 ossos, com busca de poses/trajetórias, curvas de distância e transições inerciais. O apoio dos dedos é corrigido com IK preservando o joelho e a orientação do tornozelo. Uma janela limitada adapta a aproximação à bola; carga maior reduz cadência e amplia a perna livre.
 
-O modelo de equilíbrio continua reduzido: não simula músculos ou torques de cada articulação. Rapier resolve colisões por cápsulas verticais, bola e traves com CCD. Não há ragdoll. A biblioteca CC0 de Quaternius contém locomoção geral; o chute é uma sequência própria de keyframes. Não é animação capturada de futebol nem qualidade visual AAA.
+O modelo de equilíbrio continua reduzido: não simula músculos ou torques de cada articulação. Havok resolve colisões por cápsulas verticais, bola e traves. Subpassos adaptativos limitam o deslocamento da bola a 5,5 cm por passo; não é CCD nativo. Não há ragdoll. A biblioteca CC0 de Quaternius contém locomoção geral; o chute é uma sequência própria de keyframes. Não é animação capturada de futebol nem qualidade visual AAA.
 
 Para o **8BitDo Ultimate 3-mode Controller for Xbox (81HB)**, a [página oficial de compatibilidade Apple](https://www.8bitdo.com/apple/) indica **Bluetooth e macOS 15.2+**; não oferece conexão por cabo no Mac para esse modelo. Coloque a chave em Mobile/Bluetooth, ligue, segure Pair por 3 segundos e selecione “8BitDo Ultimate 3mode Xbox” em Ajustes do Sistema → Bluetooth. Se o navegador não o detectar, abra o jogo em Safari ou Chrome e pressione novamente um botão com a página em foco.
 
 Validação: `npm run test:controller` injeta um controle virtual na Gamepad API de uma janela Chromium separada e testa botões, eixos, menus, desconexão e reconexão. Não substitui teste do dispositivo físico. Sem vibração nesta versão.
+
+## Babylon.js + Havok
+
+O canvas é renderizado exclusivamente pelo Babylon.js: malhas, materiais, uniformes, instâncias, sombras e skinning na GPU. `src/babylon-renderer.js` adapta os assets existentes. Three.js permanece como estrutura de dados, carregador dos assets e matemática de poses/IK; a migração não elimina essa dependência CPU. A física utiliza `PhysicsBody`/`PhysicsShape` Babylon com Havok; Rapier foi removido. O WASM é empacotado localmente e também carregado pelos workers Node.
+
+A regra de rolamento permanece no controlador compartilhado com a previsão; Havok resolve gravidade no ar e colisões. Cápsulas não substituem o contato específico de pés, cabeças e mãos. Não há ragdoll ou animação de futebol fornecida automaticamente pelo novo motor.
+
+Validação: `npm test`, `npm run build`, `HEADED=1 node tests/babylon-browser.js`. O último comando verifica ações, pausa, os sete cenários, qualidade e viewport móvel, com capturas em `output/babylon-review`. Apps nativos ainda precisam de `npm run mobile:sync` e validação no aparelho.
 
 ## Implementação
 
@@ -121,7 +129,9 @@ Veja a [pesquisa técnica, decisões e medições](docs/movimento-e-fisica.md).
 
 Prioridades seguintes: clips específicos de futebol, partidas/frenagens/cortes multidirecionais, LODs, contatos pé-bola mais precisos, animações autorais de goleiro e regras completas. As métricas do Chromium automatizado não substituem benchmark em GPU real.
 
-Medição local em 17/09/2026: Chromium com ANGLE Metal, Apple M3 Pro, viewport de 1440×900, 100 frames por qualidade após aquecimento: média de 60 FPS e mediana de 16,7 ms nos três modos; p95 de 17,5–17,6 ms nos três modos, com a skin, os acessórios e Rapier ativos. É uma amostra curta de uma máquina. Reproduzir em macOS com `node tests/performance.js` (abre uma janela de teste).
+Benchmark Babylon/Havok local em 27/09/2026: Apple M3 Pro, ANGLE Metal, 1440×900, 100 frames por qualidade após aquecimento. Alta/média/baixa: 59/60/60 FPS médios; mediana 16,7 ms; p95 17,6/17,7/17,6 ms. 268 draw calls com sombras e 122 sem sombras no trecho medido. Amostra curta de um equipamento, sem garantia para outros aparelhos. Resultado em `output/babylon-performance.json`.
+
+Medição histórica da versão Three/Rapier (não representa este branch), em 17/09/2026: Chromium com ANGLE Metal, Apple M3 Pro, viewport de 1440×900, 100 frames por qualidade após aquecimento: média de 60 FPS e mediana de 16,7 ms nos três modos; p95 de 17,5–17,6 ms nos três modos, com a skin, os acessórios e Rapier ativos. É uma amostra curta de uma máquina. Reproduzir em macOS com `node tests/performance.js` (abre uma janela de teste).
 
 
 ## Assets e geração da biblioteca

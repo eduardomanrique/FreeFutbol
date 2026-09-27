@@ -1,3 +1,5 @@
+> Pesquisa histórica anterior à migração. O branch `codex/babylon-havok` agora renderiza com Babylon e simula colisões com Havok; números identificados como Rapier abaixo pertencem à versão anterior. Consulte o README para arquitetura atual.
+
 # Toque de primeira e movimento sem sprint —19/09/2026
 
 ## Referências consultadas

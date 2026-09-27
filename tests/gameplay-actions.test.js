@@ -251,7 +251,7 @@ test("keeper closes down a nearby opponent and claims with hands", () => {
   assert.equal(m.ball.owner, k.id);
   m.physics.dispose();
 });
-test("Rapier uses matching surface rankings for rollout and bounce", () => {
+test("Havok uses matching surface rankings for rollout and bounce", () => {
   const results = {};
   for (const variant of ["match", "sand", "court", "street"]) {
     const m = fixture(variant);

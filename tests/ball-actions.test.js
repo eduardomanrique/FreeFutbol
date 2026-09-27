@@ -105,7 +105,7 @@ test("free ball preserves inertia during a direction change, touches are discret
   assert.equal(m.players[9].dribbleState.mode, "recover");
   m.physics.dispose();
 });
-test("weak and strong ground passes reach near and far target distances under actual Rapier drag", () => {
+test("weak and strong ground passes reach near and far target distances under actual Havok drag", () => {
   for (const distance of [5, 15, 30])
     for (const power of [0, 1]) {
       const { speed, lift } = passTrajectory(distance, power);

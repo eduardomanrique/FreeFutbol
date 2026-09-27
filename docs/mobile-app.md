@@ -1,6 +1,6 @@
 # App mobile
 
-O CAMPO 26 pode ser empacotado como app iOS e Android com Capacitor. O app reutiliza a partida web compilada junto dele: Three.js/WebGL, Rapier/WASM, interface touch e modos offline funcionam sem carregar a página do site. A tela fica travada em paisagem e usa a área toda do aparelho.
+O CAMPO 26 pode ser empacotado como app iOS e Android com Capacitor. O app reutiliza a partida web compilada junto dele: Babylon.js/WebGL, Havok/WASM, interface touch e modos offline funcionam sem carregar a página do site. A tela fica travada em paisagem e usa a área toda do aparelho.
 
 ## Preparar e abrir
 

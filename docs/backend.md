@@ -1,3 +1,5 @@
+> Branch Babylon/Havok: validação local; os registros de publicação abaixo são históricos e não indicam deploy desta migração.
+
 # Backend autoritativo e partidas online
 
 Publicado em19/09/2026 em https://kmworks.dev/futebol/. Esta arquitetura substitui a proposta inicial de anfitrião autoritativo/WebRTC dos planos históricos.
@@ -18,7 +20,7 @@ O convite contém apenas `?room=CODIGO`. Tokens nunca entram no link. A sessão 
 ## Autoridade e simulação
 
 - O processo HTTP/WebSocket mantém salas/sessões, verifica mensagens e distribui estados. Cada partida usa um worker Node separado, limitado por `MAX_MATCHES`.
-- O worker executa `Match` e Rapier a 120 Hz, com controle independente por time, IA dos demais atletas e decisões oficiais de bola, apoios, contatos, carga, gols, relógio e reinícios.
+- O worker executa `Match` e Havok a 120 Hz, com controle independente por time, IA dos demais atletas e decisões oficiais de bola, apoios, contatos, carga, gols, relógio e reinícios.
 - A física executa também a correção de aproximação ligada à locomoção. Os ossos, clips, texturas, câmera, estádio e renderização permanecem nos navegadores.
 - O cliente envia intenções a até 30 Hz. Ações discretas entram numa fila junto de uma sequência crescente; mensagens repetidas/antigas são ignoradas. Potência é calculada pelo tempo de carga no servidor. Campos adicionais como time, placar, posição e potência não conferem autoridade ao cliente.
 - O servidor envia estados visuais a 20 Hz, com posições, velocidades, pés físicos, ações e controles dos dois times. São snapshots de apresentação, não checkpoints de restauração da física.

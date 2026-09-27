@@ -953,6 +953,7 @@ window.render_game_to_text = () =>
       held: touch.held,
     },
     graphics: {
+      engine: "Babylon.js",
       quality: stadium.quality,
       camera: stadium.cameraMode,
       athletes: "skinned",

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { stepBallMotion } from "../src/ball-physics.js";
 import { FootballPhysics } from "../src/physics-world.js";
 const ball = (v = {}) => ({
   x: 0,
@@ -12,7 +13,7 @@ const ball = (v = {}) => ({
   owner: null,
   ...v,
 });
-test("Rapier resolves capsule impact with conserved planar momentum and bounded separation", () => {
+test("Havok resolves capsule impact with conserved planar momentum and bounded separation", () => {
   const engine = new FootballPhysics();
   const dt = 1 / 120;
   const players = [
@@ -31,10 +32,10 @@ test("Rapier resolves capsule impact with conserved planar momentum and bounded 
   assert.ok(Math.abs(players[0].vx + players[1].vx - 2) < 0.01);
   assert.ok(players[0].vx < 2 && players[1].vx > 0);
   assert.ok(players[1].x - players[0].x > 0.65);
-  assert.equal(engine.snapshot().engine, "Rapier");
+  assert.equal(engine.snapshot().engine, "Havok");
   engine.dispose();
 });
-test("CCD catches a shot crossing an entire thin goalpost within one tick", () => {
+test("Adaptive substeps catch a shot crossing an entire thin goalpost within one tick", () => {
   const engine = new FootballPhysics();
   const m = { players: [], ball: ball({ x: 45.7, y: 1, z: 3.66, vx: 90 }) };
   for (let i = 0; i < 5; i++) engine.step(m, 1 / 120);
@@ -42,7 +43,7 @@ test("CCD catches a shot crossing an entire thin goalpost within one tick", () =
   assert.ok(m.ball.x < 45.85);
   engine.dispose();
 });
-test("Rapier grass contact stops low and medium balls without reversing their direction", () => {
+test("Havok grass contact stops low and medium balls without reversing their direction", () => {
   const distances = [];
   for (const speed of [5, 10]) {
     const engine = new FootballPhysics();
@@ -55,16 +56,22 @@ test("Rapier grass contact stops low and medium balls without reversing their di
     }
     assert.equal(m.ball.vx, 0);
     assert.equal(m.ball.vz, 0);
+    const prediction = ball({ vx: speed });
+    for (let i = 0; i < 1200; i++) stepBallMotion(prediction, 1 / 120);
+    assert.ok(
+      Math.abs(m.ball.x - prediction.x) < 0.05,
+      "live rolling must agree with pass prediction",
+    );
     distances.push(m.ball.x);
     engine.dispose();
   }
   assert.ok(
     distances[0] > 1 &&
-      distances[0] < 2 &&
+      distances[0] < 2.2 &&
       distances[1] < 8 &&
       distances[1] > distances[0] * 2,
   );
-  console.log("Rapier stopping distances, 5/10 m/s:", distances);
+  console.log("Havok stopping distances, 5/10 m/s:", distances);
 });
 
 test("root correction changes displacement without accumulating propulsion velocity", () => {

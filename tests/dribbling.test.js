@@ -622,7 +622,8 @@ test("departures and pace transitions keep producing contacts, without overtakin
             );
             assert.ok(
               result.maxD <
-                (mode.includes("sprint") || mode === "stop-go" ? 4.25 : 3),
+                // Havok rolling now matches the shared predictor (no duplicate friction).
+                (mode.includes("sprint") || mode === "stop-go" ? 4.4 : 3),
               `ball stays recoverable (${result.maxD} m): ${context}`,
             );
           } finally {

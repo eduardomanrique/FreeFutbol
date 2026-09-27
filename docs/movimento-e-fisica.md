@@ -1,6 +1,6 @@
 # Movimento e física: pesquisa e implementação
 
-Atualizado em 17/09/2026. A implementação anterior aplicava princípios de passada e contato em um boneco procedural. A versão atual integra uma biblioteca de animações esqueléticas, busca de poses, curvas de distância, transições inerciais, correção da trajetória e Rapier/WASM. São implementações próprias; não utilizam código da Unreal.
+Atualizado em 27/09/2026. A implementação anterior aplicava princípios de passada e contato em um boneco procedural. A versão atual integra uma biblioteca de animações esqueléticas, busca de poses, curvas de distância, transições inerciais, correção da trajetória e Havok/WASM. São implementações próprias; não utilizam código da Unreal.
 
 ## Sistemas ativos no jogo
 
@@ -9,20 +9,20 @@ Atualizado em 17/09/2026. A implementação anterior aplicava princípios de pas
 | Motion matching | `src/motion-matching.js` busca frames por posição/velocidade dos pés, velocidade do corpo e trajetória futura em três horizontes; pesquisa a 10 Hz por atleta. | Base pequena com idle, caminhada, corrida e sprint para frente. A animação das mudanças de direção depende da rotação procedural do corpo; a bola pode cortar no contato antes de o corpo completar o giro; não há biblioteca completa de cortes e giros. |
 | Distance matching | Curvas acumuladas de distância por clip; inversão da curva faz a fase avançar pelos metros realmente percorridos após colisões. | Distâncias normalizadas para velocidades nominais, pois os clips são in-place. Sem clips específicos de partida e frenagem. |
 | Inertialization | Diferenças de pose e velocidade linear/angular decaem ao entrar em um novo clip. | Transição customizada, com limites para evitar overshoot. |
-| Root/stride warping | Janela de 0,24 s adapta a trajetória de aproximação até 24 cm ao alvo de preparação/recepção; Rapier resolve a correção contra obstáculos. Carga maior reduz cadência e amplia a perna livre. | Correção aditiva sobre o controlador, não reprodução de uma trajetória de root motion capturada. |
+| Root/stride warping | Janela de 0,24 s adapta a trajetória de aproximação até 24 cm ao alvo de preparação/recepção; Havok resolve a correção contra obstáculos. Carga maior reduz cadência e amplia a perna livre. | Correção aditiva sobre o controlador, não reprodução de uma trajetória de root motion capturada. |
 | Foot locking / IK | Apoio nos dedos com correção quadril–joelho–tornozelo sobre a pose animada, preservando o plano do joelho e a orientação do tornozelo. | Bacia ajustada à extensão possível das pernas. Alvos liberados quando ficam fora do alcance; não garante ausência de deslizamento em toda transição brusca. |
-| Contato físico | Rapier 0.20.0/WASM, passo de 120 Hz, 22 cápsulas de 78 kg, bola de 0,43 kg, traves, chão, CCD e resposta normal/tangencial. | Cápsulas verticais com rotações bloqueadas, sem membros físicos nem ragdoll. |
+| Contato físico | Havok/WASM, passo de 120 Hz, 22 cápsulas de 78 kg, bola de 0,43 kg, traves, chão, subpassos adaptativos (deslocamento máximo de 5,5 cm) e resposta normal/tangencial. | Cápsulas verticais com rotações bloqueadas, sem membros físicos nem ragdoll. |
 | Equilíbrio e propulsão | Modelo reduzido de centro de massa, gravidade, forças de apoio e aderência governa a intenção de movimento. Reações de impacto modificam tronco e animação. | Não há músculos ou controlador de torques de um humano completo. Apoios físicos e pose capturada ainda são camadas distintas. |
 
 O personagem agora tem uma malha contínua com skin e 65 ossos, retargeting offline, materiais de uniforme, cabelo e calçados. Os assets livres de Quaternius são CC0. A biblioteca padrão oferece locomoção geral: o chute foi criado como sequência própria de keyframes, sem alegar captura profissional de futebol. [Créditos e proveniência](../public/assets/athlete/CREDITS.md).
 
 ## Bola e interação
 
-Chutes de frente sem embalo variam de5,4 a27m/s conforme a carga; de costas chegam a6,75m/s, com precisão menor conforme o ângulo, agendados ao soltar X/Espaço e liberados no contato do pé. Toques curtos recebem pouca elevação. Resistência de rolagem explícita: 5,8 m/s² + 0,085 × velocidade; arrasto quadrático no ar. Rapier acrescenta atrito de contato e restituição nos impactos. A bola chega ao repouso, sem manter velocidade constante.
+Chutes de frente sem embalo variam de5,4 a27m/s conforme a carga; de costas chegam a6,75m/s, com precisão menor conforme o ângulo, agendados ao soltar X/Espaço e liberados no contato do pé. Toques curtos recebem pouca elevação. Resistência de rolagem explícita: 5,8 m/s² + 0,085 × velocidade; arrasto quadrático no ar. Havok resolve os impactos; no rolamento assentado não se soma outro atrito à resistência explícita. A bola chega ao repouso, sem manter velocidade constante.
 
-Teste atual em gramado Rapier livre, sem jogadores: bolas rasteiras a 5 e 10 m/s param em aproximadamente **1,63 e 6,84 metros**, respectivamente. São parâmetros do jogo, não medições de gramado real. O integrador analítico usado para previsão curta possui valores ligeiramente diferentes (2,03 e 7,82 m), pois não reproduz contatos Rapier. Chutes fortes podem sair antes de parar.
+Teste atual em gramado Havok livre, sem jogadores: bolas rasteiras a 5 e 10 m/s param em aproximadamente **2,03 e 7,82 metros**, respectivamente. São parâmetros do jogo, não medições de gramado real. O integrador analítico usado para previsão curta concorda com esse rolamento livre, sem reproduzir colisões com jogadores/traves. Chutes fortes podem sair antes de parar.
 
-A recepção de bola livre usa quatro faixas em `src/reception.js`: corpo (raio 0,48 m, até 1,9 m de altura), perto (0,85 m), médio (1,30 m) e longo (2,25 m para planejar; o domínio exige aproximação até 1,12 m e proximidade real do pé). Todas as faixas tentam domínio automaticamente; médio/longo aproximam o pé/corpo, sem cone obrigatório de direcional. O jogador parado/andando vira-se para a bola e respeita comando de afastamento. As chances nominais são 99,9%, 98%, 95% e 90%, sorteadas uma vez por tentativa. A categoria não melhora automaticamente à medida que o jogador se aproxima, e uma falha não é repetida a cada frame. Contatos são verificados antes do passo Rapier para evitar que passes rápidos rebatam antes da tentativa. A previsão olha até 0,33 s; não há domínio de bolas fora da altura/alcance elegíveis.
+A recepção de bola livre usa quatro faixas em `src/reception.js`: corpo (raio 0,48 m, até 1,9 m de altura), perto (0,85 m), médio (1,30 m) e longo (2,25 m para planejar; o domínio exige aproximação até 1,12 m e proximidade real do pé). Todas as faixas tentam domínio automaticamente; médio/longo aproximam o pé/corpo, sem cone obrigatório de direcional. O jogador parado/andando vira-se para a bola e respeita comando de afastamento. As chances nominais são 99,9%, 98%, 95% e 90%, sorteadas uma vez por tentativa. A categoria não melhora automaticamente à medida que o jogador se aproxima, e uma falha não é repetida a cada frame. Contatos são verificados antes do passo Havok para evitar que passes rápidos rebatam antes da tentativa. A previsão olha até 0,33 s; não há domínio de bolas fora da altura/alcance elegíveis.
 
 A bola é dinâmica inclusive durante a posse. Condução usa impulsos discretos em contatos varridos do pé; não existe seguidor por alvo fixo. A preparação usa assistência de aproximação à trajetória da bola e mantém a entrada de mira separada do deslocamento. Soltar agenda uma trajetória da perna livre; contato libera passe/chute. Passes calculam potência pela distância; finalizações usam índice de precisão por potência/distância/ângulo corporal. Comandos podem ser antecipados até1s antes da chegada: a perna prepara o golpe ainda com a bola livre e bate de primeira, sem domínio intermediário; o contato físico precisa ocorrer dentro desse prazo. Passe alto usa voo nominal mínimo1,5s para superar a altura do atleta. Giro, calcanhar e queda são camadas procedurais de corpo/IK; a mão do lado da queda busca o chão e participa da recuperação. Não é colisão articulada completa nem ragdoll.
 
@@ -32,13 +32,13 @@ Referência normativa: [regras da mecânica](regras-da-mecanica.md), incluindo o
 
 1. Entrada/IA determina a intenção; o modelo reduzido calcula deslocamento e equilíbrio.
 2. A janela de interação acrescenta correção limitada de trajetória.
-3. Rapier resolve cápsulas, bola, gramado e traves, com CCD.
+3. Havok resolve cápsulas, bola, gramado e traves, com subpassos adaptativos (deslocamento máximo de 5,5 cm).
 4. O controlador consulta a base e avança a animação pela distância resolvida.
-5. Three.js aplica a pose à skin, a reação do tronco e o IK de contato.
+5. A camada CPU existente calcula a pose, reação do tronco e IK; Babylon aplica as matrizes à skin na GPU.
 
-A preparação da biblioteca acontece offline em `scripts/build-motion-library.mjs`. O navegador carrega somente poses retargetadas e os assets de renderização; não processa a biblioteca fonte inteira. A base utiliza cerca de 359 KiB de poses e 72 KiB de metadados, além de modelo e texturas. Rapier e Three.js estão em chunks separados para cache.
+A preparação da biblioteca acontece offline em `scripts/build-motion-library.mjs`. O navegador carrega somente poses retargetadas e os assets de renderização; não processa a biblioteca fonte inteira. A base utiliza cerca de 359 KiB de poses e 72 KiB de metadados, além de modelo e texturas. Havok, Babylon e a matemática/assets Three estão em chunks separados para cache.
 
-`tests/motion.test.js` verifica dados esqueléticos, busca de fases, inversão da curva, correção de trajetória e integração na partida. `tests/rapier.test.js` mede colisão entre massas, conservação de momento, repouso e CCD a 90 m/s contra uma trave fina. Os testes antigos do boneco procedural permanecem como testes do controlador reduzido; não constituem prova de qualidade da nova skin.
+`tests/motion.test.js` verifica dados esqueléticos, busca de fases, inversão da curva, correção de trajetória e integração na partida. `tests/havok.test.js` mede colisão entre massas, conservação de momento, repouso e subpassos adaptativos (deslocamento máximo de 5,5 cm) a 90 m/s contra uma trave fina. Os testes antigos do boneco procedural permanecem como testes do controlador reduzido; não constituem prova de qualidade da nova skin.
 
 ## Fontes primárias
 
@@ -47,8 +47,8 @@ A preparação da biblioteca acontece offline em `scripts/build-motion-library.m
 - [Epic — Motion Warping](https://dev.epicgames.com/documentation/en-us/unreal-engine/motion-warping-in-unreal-engine).
 - [Daniel Holden — Inverse Kinematics and Foot Locking](https://theorangeduck.com/page/inverse-kinematics-foot-locking).
 - [Daniel Holden — Spring-Roll-Call](https://theorangeduck.com/page/spring-roll-call).
-- [Rapier — JavaScript rigid bodies](https://rapier.rs/docs/user_guides/javascript/rigid_bodies/).
-- [Rapier — Character controller](https://rapier.rs/docs/user_guides/javascript/character_controller/). Referência de integração; o jogo usa cápsulas dinâmicas, não esse controller cinemático.
+- [Babylon — Havok Physics V2](https://github.com/BabylonJS/Documentation/blob/master/content/features/featuresDeepDive/physics/v2/usingPhysicsEngine.md).
+- [Havok — implementação do plugin Babylon](https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Physics/v2/Plugins/havokPlugin.ts). Referência de integração; o jogo usa cápsulas dinâmicas, não esse controller cinemático.
 - [Quaternius — Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html).
 - [Quaternius — Universal Base Characters](https://quaternius.com/packs/universalbasecharacters.html).
 

@@ -11,7 +11,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          physics: ["@dimforge/rapier3d-compat"],
+          physics: ["@babylonjs/havok"],
+          babylon: ["@babylonjs/core"],
           three: ["three"],
         },
       },

@@ -36,11 +36,12 @@ await page.click("#start-btn");
 const state = () =>
   page.evaluate(() => JSON.parse(window.render_game_to_text()));
 assert.equal((await state()).mode, "playing");
+const initialX=(await state()).players[9].x;
 await page.keyboard.down("ArrowRight");
 await page.evaluate(() => window.advanceTime(800));
 await page.keyboard.up("ArrowRight");
 let s = await state();
-assert.ok(s.players[9].x > .5);
+assert.ok(s.players[9].x > initialX + .5, JSON.stringify({initialX,player:s.players[9]}));
 assert.ok(s.ball.x > .5);
 await page.screenshot({ path: "output/browser/gameplay.png" });
 await page.keyboard.press("Escape");
@@ -51,39 +52,52 @@ assert.equal((await state()).time, paused.time);
 await page.click("#resume");
 await page.evaluate(() => {
   let m = window.__test.match;
-  m.resetPlayers();
+  m.start();
   m.mode = "playing";
 });
 await page.keyboard.press("KeyJ");
-await page.evaluate(()=>window.advanceTime(450));
+await page.evaluate(() => {
+  for (let i=0;i<180 && !window.__test.match.lastPass;i++) window.advanceTime(1000/120);
+});
 s = await state();
 assert.equal(s.lastAction, "pass");
-assert.notEqual(s.selected, 9);
+assert.ok(s.lastPass && s.ball.owner === null);
+// A short unassisted tap can intentionally have no receiver.
+if (s.lastPass.target !== null) assert.equal(s.selected, s.lastPass.target);
 await page.evaluate(() => {
   let m = window.__test.match;
-  m.resetPlayers();
+  m.start();
   m.mode = "playing";
 });
 await page.keyboard.press("KeyL");
-await page.evaluate(()=>window.advanceTime(450));
+await page.evaluate(() => {
+  for (let i=0;i<180 && !window.__test.match.lastPass;i++) window.advanceTime(1000/120);
+});
 assert.equal((await state()).lastAction, "lob");
 await page.evaluate(() => {
   let m = window.__test.match;
-  m.resetPlayers();
+  m.start();
   m.mode = "playing";
 });
 await page.keyboard.down("Space");
 await page.evaluate(() => window.advanceTime(500));
 assert.ok((await state()).charge > 0.4);
 await page.keyboard.up("Space");
-await page.evaluate(()=>window.advanceTime(280));
+await page.evaluate(() => {
+  for (let i=0;i<180 && !window.__test.match.lastShot;i++) window.advanceTime(1000/120);
+});
 s = await state();
 assert.equal(s.lastAction, "shoot");
 assert.ok(s.lastShot.speed > 20);
 assert.equal(s.ball.owner, null);
+await page.evaluate(() => {
+  // Switching/tackling are defensive actions; a loose shot still belongs to
+  // the attacking team until the opponent gains possession.
+  const m=window.__test.match;m.ball.owner=12;m.ball.lastTeam=1;
+});
 await page.keyboard.press("KeyQ");
 assert.equal((await state()).lastAction, "switch");
-await page.keyboard.press("KeyK");
+await page.keyboard.press("KeyX");
 assert.equal((await state()).lastAction, "tackle");
 await page.evaluate(() => {
   let m = window.__test.match;

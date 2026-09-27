@@ -1,4 +1,4 @@
-// Tuned arcade coefficients, not laboratory measurements. Predictions and Rapier
+// Tuned arcade coefficients, not laboratory measurements. Predictions and Havok
 // share these values so passes/receptions use the same surface as the live ball.
 export const SURFACES = {
   grass: { roll: 5.8, bounce: 0.48, impact: 0.018 },

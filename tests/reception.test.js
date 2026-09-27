@@ -52,7 +52,7 @@ function match(random = () => 0) {
   m.kickCooldown = 0;
   return m;
 }
-test("live fast body and near passes are trapped without any control input before Rapier rebounds them", () => {
+test("live fast body and near passes are trapped without any control input before Havok rebounds them", () => {
   for (const z of [0, 0.7]) {
     const m = match();
     Object.assign(m.ball, ball(2, z, -28));

@@ -86,6 +86,7 @@ function outfit(mesh, id) {
     // crisp cuffs and hems instead of interpolating clothing colors per vertex.
     mesh.material = new T.MeshStandardMaterial({ roughness: 0.92 });
     mesh.material.userData.kitStyle = kitStyle;
+    mesh.material.userData.kit = { skin, shirt, shorts, boot };
     mesh.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, {
         kitStyle,

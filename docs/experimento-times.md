@@ -20,7 +20,7 @@ Offline e treino continuam usando a simulação local completa.
 | Outro cliente | Previsão da bola e pedido de autoridade ao detectar contato local |
 | Servidor | Salas, identidade do time, validação estrutural, sequência, arbitragem de autoridade e encaminhamento |
 
-O relay não instancia `Match`, Rapier ou um worker de partida. Guarda os últimos comandos e o estado da bola para reconexão. Continua sendo necessário um backend WebSocket acessível aos dois clientes.
+O relay não instancia `Match`, Havok ou um worker de partida. Guarda os últimos comandos e o estado da bola para reconexão. Continua sendo necessário um backend WebSocket acessível aos dois clientes.
 
 ## Comandos e economia de mensagens
 
@@ -60,7 +60,7 @@ Essa arbitragem evita dois donos simultâneos, mas não reconstrói contatos no 
 
 O relay pausa o relógio quando um participante desconecta e usa a janela existente de reconexão de 30 s. Também detecta cinco segundos sem lotes de simulação, mesmo se o socket ainda responder a ping. Na retomada, ambos recebem os comandos e a bola armazenados.
 
-É uma restauração aproximada: locomoção e controles são reiniciados, incluindo cancelamento de carga de chute. Não é um checkpoint completo de todos os estados internos do Rapier e da IA. Backpressure excessivo fecha o socket para reconectar pelo checkpoint, evitando descartar silenciosamente eventos de bola.
+É uma restauração aproximada: locomoção e controles são reiniciados, incluindo cancelamento de carga de chute. Não é um checkpoint completo de todos os estados internos do Havok e da IA. Backpressure excessivo fecha o socket para reconectar pelo checkpoint, evitando descartar silenciosamente eventos de bola.
 
 ## Medições locais — 23/09/2026
 

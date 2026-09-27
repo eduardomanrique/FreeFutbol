@@ -1,6 +1,6 @@
 # Plano do backend — 19/09/2026
 
-> **Histórico de planejamento, superado em 19/09/2026:** o usuário optou por servidor autoritativo. A implementação atual usa Node.js, Rapier e WebSocket, sem anfitrião autoritativo ou WebRTC/TURN. Consulte [backend.md](backend.md) para comportamento implementado e limitações. O restante deste documento preserva a proposta anterior, não o estado atual.
+> **Histórico de planejamento, superado em 19/09/2026:** o usuário optou por servidor autoritativo. A implementação atual neste branch usa Node.js, Havok e WebSocket, sem anfitrião autoritativo ou WebRTC/TURN. Consulte [backend.md](backend.md) para comportamento implementado e limitações. O restante deste documento preserva a proposta anterior, não o estado atual.
 
 Status: proposta para implementação; nenhum serviço implementado ou publicado neste trabalho.
 

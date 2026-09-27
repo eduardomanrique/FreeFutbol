@@ -243,7 +243,7 @@ test("rolling ball does not lose most of its speed in one second", () => {
   assert.ok(m.ball.vx > 16 && m.ball.vx < 18, `rolling speed ${m.ball.vx}`);
 });
 
-test("short shot charges stop in live Rapier and remain at rest without a touch", () => {
+test("short shot charges stop in live Havok and remain at rest without a touch", () => {
   const distances = [];
   for (const power of [0, 0.1, 0.25]) {
     const m = new Match();

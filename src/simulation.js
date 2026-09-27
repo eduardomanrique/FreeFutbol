@@ -1608,7 +1608,7 @@ export class Match {
         dir = p.team === 0 ? 1 : -1;
       if (this.training && p.team === 1) {
         // Keep all opponent decision systems, including goalkeeper control,
-        // out of training. Rapier still gives these players solid colliders.
+        // out of training. Havok still gives these players solid colliders.
         tx = p.homeX;
         tz = p.homeZ;
         speed = 0;

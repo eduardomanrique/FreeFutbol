@@ -219,7 +219,7 @@ export function turnContact(p) {
     if (p.walkRequested || p.shield || Math.abs(a.delta) >= 1.05)
       exitPush(p, a);
     // Ball contact runs after preparePlayers. Apply the support impulse on
-    // the next locomotion tick, before Rapier receives the player velocity;
+    // the next locomotion tick, before Havok receives the player velocity;
     // otherwise the world step overwrites the redirected velocity immediately.
   }
   if (a.soleRoll) a.leftLandings = p.locomotion.feet[a.supportFoot].landings;

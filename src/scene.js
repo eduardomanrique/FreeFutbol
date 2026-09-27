@@ -1,3 +1,4 @@
+import { BabylonRenderer } from "./babylon-renderer.js";
 import { AltinhaEffects } from "./altinha-effects.js";
 import { predictLanding } from "./ball-landing.js";
 import { addGroundDetail } from "./surface-textures.js";
@@ -17,16 +18,9 @@ const mat = (color, extra = {}) =>
 export class Stadium {
   constructor(container, assets) {
     this.assets = assets;
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance",
-    });
+    this.renderer = new BabylonRenderer();
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#a8b6ac");
@@ -640,6 +634,7 @@ export class Stadium {
           : Math.min(devicePixelRatio, 1.75);
     this.renderer.setPixelRatio(ratio);
     this.renderer.shadowMap.enabled = q !== "low";
+    this.renderer.setShadowResolution(q === "high" ? 2048 : 1024);
     this.sun.shadow.mapSize.set(
       q === "high" ? 2048 : 1024,
       q === "high" ? 2048 : 1024,
